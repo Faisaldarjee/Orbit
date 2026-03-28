@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Send, Globe, Search, Sparkles, XCircle, WifiOff, Zap, ShieldAlert } from "lucide-react"
+import { Send, Globe, Search, Sparkles, XCircle, WifiOff, Zap, ShieldAlert, RefreshCw } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -17,6 +17,7 @@ export default function PublicOrbPage() {
   const [user, setUser] = useState<any>(null)
   const chatRef = useRef<HTMLDivElement>(null)
   const [syncStatus, setSyncStatus] = useState<string>("connecting")
+  const [retryCount, setRetryCount] = useState(0)
 
   // 🛰️ SIGNAL STRENGTH & FINGERPRINT DIAGNOSTIC
   const performSystemCheck = async () => {
@@ -39,33 +40,16 @@ export default function PublicOrbPage() {
       } else {
         toast.success("Universal Signal: NOMINAL", { 
           id: "globcheck",
-          description: `Credentials Verified (${fingerprint}). Checking Realtime...`,
+          description: `Credentials Verified (${fingerprint}). Re-syncing browser...`,
           duration: 10000,
           icon: <Zap className="w-5 h-5 text-green-500" />
         });
-        if (syncStatus !== 'SUBSCRIBED') {
-           window.location.reload();
-        }
+        window.location.reload();
       }
     } catch (err: any) {
       toast.error("Global System Check Error", { id: "globcheck", description: err.message });
     }
   };
-
-  useEffect(() => {
-    const checkSignal = () => {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      if (!url || !key) {
-        toast.error("Global Signal Configuration Missing", {
-           description: "Vercel environment variables are NOT being transmitted to the browser.",
-           duration: Infinity,
-           icon: <WifiOff className="w-5 h-5 text-red-500" />
-        });
-      }
-    };
-    checkSignal();
-  }, []);
 
   useEffect(() => {
     const getUser = async () => {
@@ -78,14 +62,8 @@ export default function PublicOrbPage() {
       const { data } = await supabase
         .from('messages')
         .select(`
-          id,
-          content,
-          created_at,
-          user_id,
-          profiles (
-            full_name,
-            avatar_url
-          )
+          id, content, created_at, user_id,
+          profiles (full_name, avatar_url)
         `)
         .order('created_at', { ascending: true })
         .limit(50)
@@ -94,46 +72,65 @@ export default function PublicOrbPage() {
     }
     fetchMessages()
 
-    const channel = supabase
-      .channel('public-orb')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-        try {
-          const { data } = await supabase
-            .from('messages')
-            .select('id, content, created_at, user_id, profiles(full_name, avatar_url)')
-            .eq('id', payload.new.id)
-            .maybeSingle()
-          
-          if (data) {
-            setMessages(prev => {
-              const exists = prev.some(m => m.id === data.id)
-              if (exists) return prev
-              return [...prev, data]
-            })
+    // 🛰️ AGGRESSIVE REAL-TIME BROADCAST ENGINE
+    let channel: any;
+
+    const subscribeToGlobalSignal = () => {
+       channel = supabase
+        .channel('public-orb')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+          try {
+            const { data } = await supabase
+              .from('messages')
+              .select('id, content, created_at, user_id, profiles(full_name, avatar_url)')
+              .eq('id', payload.new.id)
+              .maybeSingle()
+            
+            if (data) {
+              setMessages(prev => {
+                const exists = prev.some(m => m.id === data.id)
+                if (exists) return prev
+                return [...prev, data]
+              })
+            }
+          } catch (err) {
+            console.error("Broadcast Sync Error:", err)
           }
-        } catch (err) {
-          console.error("Broadcast Sync Error:", err)
-        }
-      })
-      .subscribe((status, err) => {
-        setSyncStatus(status);
-        console.log(`Global Sync Status:`, status, err)
-        if (status === 'SUBSCRIBED') {
-          toast.success("Orbital Sync Established", { id: "global-success", description: "Global frequency locked." })
-        }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error("Global Sync Failure:", err)
-          toast.error("Orbital Sync Interrupted", { 
-            id: "global-error",
-            description: `Global frequency drifting: ${err || 'Unstable Connection'}`,
-          })
-        }
-      })
+        })
+        .subscribe((status, err) => {
+          setSyncStatus(status);
+          console.log(`Global Sync Status:`, status, err)
+
+          if (status === 'SUBSCRIBED') {
+            setRetryCount(0);
+            toast.success("Orbital Sync Established", { id: "global-success", description: "Global frequency locked." })
+          }
+
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            const nextRetry = retryCount + 1;
+            if (nextRetry <= 3) {
+              setRetryCount(nextRetry);
+              toast.loading(`Re-Locking Global Signal (Attempt ${nextRetry}/3)...`, { id: "global-retry" });
+              setTimeout(() => {
+                supabase.removeChannel(channel);
+                subscribeToGlobalSignal();
+              }, 2000 * nextRetry);
+            } else {
+              toast.error("Orbital Sync Interrupted", { 
+                id: "global-error",
+                description: `Global frequency drifting: ${err?.message || 'Unstable Connection'}`,
+              })
+            }
+          }
+        })
+    };
+
+    subscribeToGlobalSignal();
 
     return () => {
-      supabase.removeChannel(channel)
+      if (channel) supabase.removeChannel(channel)
     }
-  }, [])
+  }, [retryCount])
 
   useEffect(() => {
     if (chatRef.current) {
@@ -146,34 +143,30 @@ export default function PublicOrbPage() {
     if (!input.trim() || !user) return
     const content = input.trim();
     setInput("")
+
+    // OPTIMISTIC BROADCAST
+    const tempId = Math.random();
+    const tempMsg = {
+      id: tempId,
+      content,
+      user_id: user.id,
+      created_at: new Date().toISOString(),
+      profiles: { full_name: user.user_metadata?.full_name || "You", avatar_url: null }
+    };
+    setMessages(prev => [...prev, tempMsg]);
+
     const { error } = await supabase
       .from('messages')
       .insert([{ user_id: user.id, content }])
-    if (error) toast.error("Transmission error: " + error.message)
+    
+    if (error) {
+       setMessages(prev => prev.filter(m => m.id !== tempId));
+       toast.error("Transmission error: " + error.message)
+    }
   }
 
   const [selectedUser, setSelectedUser] = useState<any>(null)
-  const [requestSending, setRequestSending] = useState(false)
-
-  const handleSendRequest = async () => {
-    if (!user || !selectedUser) return
-    setRequestSending(true)
-    const { error } = await supabase
-      .from('dm_messages')
-      .insert([{ 
-        sender_id: user.id, 
-        receiver_id: selectedUser.id, 
-        content: `Voyager ${user.user_metadata?.full_name || 'Anonymous'} is requesting a secure signal connection.`,
-        status: 'pending'
-      }])
-    if (error) toast.error("Signal error: " + error.message)
-    else {
-      toast.success("Signal Request Transmitted.")
-      setSelectedUser(null)
-    }
-    setRequestSending(false)
-  }
-
+  
   return (
     <div className="flex-1 flex flex-col p-4 md:p-8 h-full">
       <header className="flex items-center justify-between mb-8">
@@ -195,8 +188,8 @@ export default function PublicOrbPage() {
                syncStatus === 'SUBSCRIBED' ? "text-secondary" : "text-amber-500 animate-pulse"
              )}
            >
-              <Zap className="w-3 h-3 mr-2" /> 
-              {syncStatus === 'SUBSCRIBED' ? "Global Status: Nominal" : "Scan Required: Low Signal"}
+              {syncStatus === 'SUBSCRIBED' ? <Zap className="w-3 h-3 mr-2" /> : <RefreshCw className="w-3 h-3 mr-2 animate-spin" />}
+              {syncStatus === 'SUBSCRIBED' ? "Signal: NOMINAL" : "Signal: DRIFTING"}
            </Button>
 
           <div className="hidden md:flex items-center gap-1 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-xs font-bold">
@@ -285,50 +278,6 @@ export default function PublicOrbPage() {
           </GlassCard>
         </div>
       </div>
-
-      <AnimatePresence>
-        {selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="max-w-md w-full"
-            >
-              <GlassCard className="p-8 border-white/10 relative bg-background/80 backdrop-blur-xl">
-                <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4 text-white/20 hover:text-white transition-colors">
-                  <XCircle className="w-6 h-6" />
-                </button>
-                <div className="flex flex-col items-center text-center">
-                  <div className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-secondary to-primary p-1 mb-6">
-                    <div className="w-full h-full rounded-[1.8rem] bg-background flex items-center justify-center text-3xl font-black font-outfit overflow-hidden">
-                       {selectedUser.avatar_url ? (
-                         <img src={selectedUser.avatar_url} className="w-full h-full object-cover" />
-                       ) : (
-                         selectedUser.full_name?.[0]?.toUpperCase() 
-                       )}
-                    </div>
-                  </div>
-                  <h2 className="text-2xl font-black font-outfit mb-1">{selectedUser.full_name}</h2>
-                  <p className="text-white/40 text-xs mb-8 uppercase tracking-widest font-bold">Universal Voyager</p>
-                  
-                  {user && user.id !== selectedUser.id ? (
-                    <Button 
-                      onClick={handleSendRequest} 
-                      disabled={requestSending}
-                      className="w-full bg-secondary text-white font-black py-6 rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:scale-[1.02] transition-transform"
-                    >
-                      {requestSending ? "Transmitting..." : "Send Signal Request"}
-                    </Button>
-                  ) : (
-                    <p className="text-white/20 text-xs italic">This is your cosmic identity.</p>
-                  )}
-                </div>
-              </GlassCard>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }
