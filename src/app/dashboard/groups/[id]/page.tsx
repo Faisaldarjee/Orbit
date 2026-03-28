@@ -212,13 +212,12 @@ export default function GroupChatPage() {
     <div className="flex-1 flex flex-col h-full overflow-hidden p-4 md:p-8">
       <header className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
-          <div className={cn(
-             "px-3 py-1.5 rounded-lg border text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2",
-             syncStatus === 'SUBSCRIBED' ? "bg-green-500/10 border-green-500/20 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.1)]" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-500"
-          )}>
-            <div className={cn("w-1.5 h-1.5 rounded-full", syncStatus === 'SUBSCRIBED' ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce")} />
-            {syncStatus === 'SUBSCRIBED' ? 'STREAM CONNECTED' : 'RECONNECTING...'}
-          </div>
+          {syncStatus === 'SUBSCRIBED' && (
+             <div className="px-3 py-1.5 rounded-lg border bg-green-500/10 border-green-500/20 text-green-500 text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(34,197,94,0.05)]">
+               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+               STREAM CONNECTED
+             </div>
+          )}
           <Button variant="ghost" size="sm" className="text-white/40 hover:text-white" onClick={() => router.push('/dashboard')}>
             <X className="w-5 h-5" />
           </Button>

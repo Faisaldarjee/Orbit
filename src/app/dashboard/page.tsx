@@ -156,13 +156,12 @@ export default function PublicOrbPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-black tracking-widest uppercase transition-all",
-            syncStatus === 'SUBSCRIBED' ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-500"
-          )}>
-            <div className={cn("w-2 h-2 rounded-full", syncStatus === 'SUBSCRIBED' ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce")} />
-            {syncStatus === 'SUBSCRIBED' ? 'RESONANCE ACTIVE' : 'RECONNECTING...'}
-          </div>
+          {syncStatus === 'SUBSCRIBED' && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl border bg-green-500/10 border-green-500/20 text-green-500 text-xs font-black tracking-widest uppercase transition-all shadow-[0_0_15px_rgba(34,197,94,0.05)]">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              RESONANCE ACTIVE
+            </div>
+          )}
         </div>
       </header>
 

@@ -206,14 +206,13 @@ export default function PrivateMoonPage() {
               <MessageSquare className="w-8 h-8 text-primary" />
               Private Moon
             </h1>
-            <div className="mt-2 mb-4 flex items-center gap-2">
-              <div className={cn(
-                "px-2 py-1 rounded-md border text-[8px] font-black tracking-widest uppercase transition-all flex items-center gap-1.5",
-                syncStatus === 'SUBSCRIBED' ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-500"
-              )}>
-                <div className={cn("w-1 h-1 rounded-full", syncStatus === 'SUBSCRIBED' ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce")} />
-                {syncStatus === 'SUBSCRIBED' ? 'ENCRYPTION ACTIVE' : 'RECONNECTING...'}
-              </div>
+            <div className="mt-2 mb-4 flex items-center gap-2 h-6">
+              {syncStatus === 'SUBSCRIBED' && (
+                <div className="px-2 py-1 rounded-md border bg-green-500/10 border-green-500/20 text-green-500 text-[8px] font-black tracking-widest uppercase transition-all flex items-center gap-1.5 shadow-[0_0_15px_rgba(34,197,94,0.05)]">
+                  <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
+                  ENCRYPTION ACTIVE
+                </div>
+              )}
             </div>
             <p className="text-white/40 text-sm italic">"Encrypted point-to-point synchronization."</p>
           </header>

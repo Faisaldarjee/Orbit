@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Sidebar } from "@/components/ui/Sidebar"
 import { supabase } from "@/lib/supabase"
 import { Globe, Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 export default function DashboardLayout({
   children,
@@ -12,13 +13,19 @@ export default function DashboardLayout({
 }) {
   const [syncing, setSyncing] = useState(true)
 
+  const router = useRouter()
+
   useEffect(() => {
     const syncIdentity = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setSyncing(false)
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        console.log("No active session detected. Relocating to access point...")
+        router.push('/login')
         return
       }
+
+      const user = session.user
 
       // Check if profile exists
       const { data: profile } = await supabase
@@ -29,7 +36,6 @@ export default function DashboardLayout({
       
       if (!profile) {
         console.log("No profile detected. Initiating Identity Handshake...")
-        // Attempt to create a profile if it's missing (Fail-safe for old users)
         await supabase.from('profiles').insert([{ 
           id: user.id, 
           full_name: user.user_metadata?.full_name || "Voyager",
@@ -42,7 +48,18 @@ export default function DashboardLayout({
     }
 
     syncIdentity()
-  }, [])
+
+    // 🛰️ Persistence Handler: Watch for session dropouts
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        router.push('/login')
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [router])
 
   if (syncing) {
     return (
