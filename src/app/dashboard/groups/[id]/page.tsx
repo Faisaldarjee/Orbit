@@ -93,54 +93,44 @@ export default function GroupChatPage() {
 
     init()
 
-    // 🛰️ AGGRESSIVE REAL-TIME SYNC ENGINE
+    // ⚡ HYPER-ROBUST SYNC ENGINE
+    const reconcile = (newMsg: any) => {
+      setMessages(prev => {
+        const isDuplicate = prev.some((m: any) => String(m.id) === String(newMsg.id));
+        if (isDuplicate) return prev;
+        return [...prev, newMsg];
+      });
+    };
+
     const subscribeToSignal = () => {
       channelRef.current = supabase
-        .channel(`group-${id}`)
+        .channel(`group-${id}`, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { 
           event: 'INSERT', 
           schema: 'public', 
           table: 'group_messages',
           filter: `group_id=eq.${id}`
         }, async (payload) => {
-          // 🚀 DB FALLBACK: If broadcast missed it
           const rawMsg = payload.new as any;
-          setMessages(prev => {
-            if (prev.some((m: any) => m.id === rawMsg.id)) return prev;
-            return [...prev, { ...rawMsg, profiles: { full_name: "Voyager", avatar_url: null } }];
-          });
-
-          // Hydrate in background
           try {
             const { data: profile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', rawMsg.user_id).maybeSingle()
-            if (profile) setMessages(prev => prev.map((m: any) => m.id === rawMsg.id ? { ...m, profiles: profile } : m));
-          } catch (err) {}
+            reconcile({ ...rawMsg, profiles: profile || { full_name: "Voyager", avatar_url: null } });
+          } catch (err) {
+            reconcile({ ...rawMsg, profiles: { full_name: "Voyager", avatar_url: null } });
+          }
         })
         .on('broadcast', { event: 'chat' }, (payload) => {
-          // ⚡ INSTANT BROADCAST
-          const newMsg = payload.payload;
-          setMessages(prev => {
-            if (prev.some((m: any) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
+           reconcile(payload.payload);
         })
         .subscribe((status, err) => {
           setSyncStatus(status);
-          console.log(`Sync Status [${id}]:`, status, err)
-          
-          if (status === 'SUBSCRIBED') {
-            setRetryCount(0);
-          }
-          
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            const nextRetry = retryCount + 1;
-            if (nextRetry <= 3) {
-              setRetryCount(nextRetry);
-              setTimeout(() => {
-                if (channelRef.current) supabase.removeChannel(channelRef.current);
-                subscribeToSignal();
-              }, 2000 * nextRetry);
-            }
+          if (status === 'SUBSCRIBED') setRetryCount(0);
+          if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && retryCount < 5) {
+             setRetryCount(prev => prev + 1);
+             setTimeout(() => {
+               if (channelRef.current) supabase.removeChannel(channelRef.current);
+               subscribeToSignal();
+             }, 1500 * (retryCount + 1));
           }
         });
     };
@@ -150,7 +140,7 @@ export default function GroupChatPage() {
     return () => { 
       if (channelRef.current) supabase.removeChannel(channelRef.current) 
     }
-  }, [id, router])
+  }, [id, retryCount])
 
   useEffect(() => {
     if (chatRef.current) {
@@ -221,6 +211,18 @@ export default function GroupChatPage() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden p-4 md:p-8">
       <header className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <div className={cn(
+             "px-3 py-1.5 rounded-lg border text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2",
+             syncStatus === 'SUBSCRIBED' ? "bg-green-500/10 border-green-500/20 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.1)]" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-500"
+          )}>
+            <div className={cn("w-1.5 h-1.5 rounded-full", syncStatus === 'SUBSCRIBED' ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce")} />
+            {syncStatus === 'SUBSCRIBED' ? 'STREAM CONNECTED' : 'RECONNECTING...'}
+          </div>
+          <Button variant="ghost" size="sm" className="text-white/40 hover:text-white" onClick={() => router.push('/dashboard')}>
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/groups')} className="w-10 h-10 p-0 rounded-xl bg-white/5">
             <ArrowLeft className="w-4 h-4" />

@@ -21,6 +21,8 @@ export default function PrivateMoonPage() {
   const [input, setInput] = useState("")
   const chatRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<any>(null)
+  const [syncStatus, setSyncStatus] = useState<string>("connecting")
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     const init = async () => {
@@ -35,31 +37,50 @@ export default function PrivateMoonPage() {
 
     const setupSignal = () => {
       channelRef.current = supabase
-        .channel('private-moon-sync')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages' }, async (payload) => {
-          // Fallback refresh for background updates
-          if (user) await refreshData(user.id)
-        })
-        .on('broadcast', { event: 'dm' }, (payload) => {
-          const newDm = payload.payload;
-          // Only process if it's for us or from us in the active chat
+        .channel('private-moon-sync', { config: { broadcast: { self: false } } })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages' }, async (payload) => {
+          const newDm = payload.new as any;
           if (user && (newDm.receiver_id === user.id || newDm.sender_id === user.id)) {
             if (activeChat && (newDm.sender_id === activeChat || newDm.receiver_id === activeChat)) {
                setMessages(prev => {
-                 if (prev.some(m => m.id === newDm.id)) return prev;
+                 if (prev.some(m => String(m.id) === String(newDm.id))) return prev;
                  return [...prev, newDm];
                });
             }
             refreshData(user.id);
           }
         })
-        .subscribe()
+        .on('broadcast', { event: 'dm' }, (payload) => {
+          const newDm = payload.payload;
+          if (user && (newDm.receiver_id === user.id || newDm.sender_id === user.id)) {
+            if (activeChat && (newDm.sender_id === activeChat || newDm.receiver_id === activeChat)) {
+               setMessages(prev => {
+                 if (prev.some(m => String(m.id) === String(newDm.id))) return prev;
+                 return [...prev, newDm];
+               });
+            }
+            refreshData(user.id);
+          }
+        })
+        .subscribe((status) => {
+          setSyncStatus(status)
+          if (status === 'SUBSCRIBED') setRetryCount(0);
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            if (retryCount < 5) {
+              setRetryCount(prev => prev + 1);
+              setTimeout(() => {
+                if (channelRef.current) supabase.removeChannel(channelRef.current);
+                setupSignal();
+              }, 1500 * (retryCount + 1));
+            }
+          }
+        })
     }
     
     if (user) setupSignal()
 
     return () => { if (channelRef.current) supabase.removeChannel(channelRef.current) }
-  }, [user, activeChat])
+  }, [user, activeChat, retryCount])
 
   const refreshData = async (userId: string) => {
     const { data: allDms } = await supabase
@@ -185,6 +206,15 @@ export default function PrivateMoonPage() {
               <MessageSquare className="w-8 h-8 text-primary" />
               Private Moon
             </h1>
+            <div className="mt-2 mb-4 flex items-center gap-2">
+              <div className={cn(
+                "px-2 py-1 rounded-md border text-[8px] font-black tracking-widest uppercase transition-all flex items-center gap-1.5",
+                syncStatus === 'SUBSCRIBED' ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-500"
+              )}>
+                <div className={cn("w-1 h-1 rounded-full", syncStatus === 'SUBSCRIBED' ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce")} />
+                {syncStatus === 'SUBSCRIBED' ? 'ENCRYPTION ACTIVE' : 'RECONNECTING...'}
+              </div>
+            </div>
             <p className="text-white/40 text-sm italic">"Encrypted point-to-point synchronization."</p>
           </header>
 

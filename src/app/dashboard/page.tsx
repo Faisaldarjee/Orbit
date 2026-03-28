@@ -50,49 +50,41 @@ export default function PublicOrbPage() {
     }
     fetchMessages()
 
-    // 🛰️ AGGRESSIVE REAL-TIME BROADCAST ENGINE
+    // ⚡ HYPER-ROBUST SYNC ENGINE
+    const reconcile = (newMsg: any) => {
+      setMessages(prev => {
+        const isDuplicate = prev.some(m => String(m.id) === String(newMsg.id));
+        if (isDuplicate) return prev;
+        return [...prev, newMsg];
+      });
+    };
+
     const subscribeToGlobalSignal = () => {
-       channelRef.current = supabase
-        .channel('public-orb')
+      channelRef.current = supabase
+        .channel('public-orb', { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-          // 🚀 DB FALLBACK: If broadcast was missed, add it
           const rawMsg = payload.new as any;
-          setMessages(prev => {
-            if (prev.some(m => m.id === rawMsg.id)) return prev;
-            return [...prev, { ...rawMsg, profiles: { full_name: "Voyager", avatar_url: null } }];
-          });
           
-          // Hydrate profile in background
+          // Hydrate with profile data instantly
           try {
             const { data: profile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', rawMsg.user_id).maybeSingle()
-            if (profile) setMessages(prev => prev.map(m => m.id === rawMsg.id ? { ...m, profiles: profile } : m));
-          } catch (err) {}
+            reconcile({ ...rawMsg, profiles: profile || { full_name: "Voyager", avatar_url: null } });
+          } catch (err) {
+            reconcile({ ...rawMsg, profiles: { full_name: "Voyager", avatar_url: null } });
+          }
         })
         .on('broadcast', { event: 'chat' }, (payload) => {
-          // ⚡ INSTANT BROADCAST: WhatsApp-speed delivery
-          const newMsg = payload.payload;
-          setMessages(prev => {
-            if (prev.some(m => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
+           reconcile(payload.payload);
         })
         .subscribe((status, err) => {
           setSyncStatus(status);
-          console.log(`Global Sync Status:`, status, err)
-
-          if (status === 'SUBSCRIBED') {
-            setRetryCount(0);
-          }
-
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            const nextRetry = retryCount + 1;
-            if (nextRetry <= 3) {
-              setRetryCount(nextRetry);
-              setTimeout(() => {
-                if (channelRef.current) supabase.removeChannel(channelRef.current);
-                subscribeToGlobalSignal();
-              }, 2000 * nextRetry);
-            }
+          if (status === 'SUBSCRIBED') setRetryCount(0);
+          if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && retryCount < 5) {
+             setRetryCount(prev => prev + 1);
+             setTimeout(() => {
+               if (channelRef.current) supabase.removeChannel(channelRef.current);
+               subscribeToGlobalSignal();
+             }, 1500 * (retryCount + 1));
           }
         })
     };
@@ -164,9 +156,12 @@ export default function PublicOrbPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/10 border border-secondary/20 text-secondary text-xs font-black tracking-widest uppercase">
-            <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-            Live Sync
+          <div className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-black tracking-widest uppercase transition-all",
+            syncStatus === 'SUBSCRIBED' ? "bg-green-500/10 border-green-500/20 text-green-500" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-500"
+          )}>
+            <div className={cn("w-2 h-2 rounded-full", syncStatus === 'SUBSCRIBED' ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce")} />
+            {syncStatus === 'SUBSCRIBED' ? 'RESONANCE ACTIVE' : 'RECONNECTING...'}
           </div>
         </div>
       </header>
