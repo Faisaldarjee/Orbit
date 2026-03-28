@@ -114,14 +114,16 @@ export default function GroupChatPage() {
           console.error("Sync Error:", err)
         }
       })
-      .subscribe((status) => {
+      .subscribe((status, err) => {
+        console.log(`Sync Status [${id}]:`, status, err)
         if (status === 'SUBSCRIBED') {
-          console.log("Orbital Sync Established for Group:", id)
           toast.success("Orbital Sync Established", { description: "Signal frequency locked." })
         }
-        if (status === 'CHANNEL_ERROR') {
-          console.error("Sync Interrupted for Group:", id)
-          toast.error("Orbital Sync Interrupted", { description: "Attempting to re-orient signal." })
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error("Critical Sync Failure:", err)
+          toast.error("Orbital Sync Interrupted", { 
+            description: `Global frequency drifting: ${err || 'Unstable Connection'}`,
+          })
         }
       })
 
