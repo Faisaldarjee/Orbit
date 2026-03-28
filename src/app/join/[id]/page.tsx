@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { Loader2, Globe, ShieldCheck } from "lucide-react"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
+import { toast } from "sonner"
 
 export default function JoinGroupPage() {
   const { id } = useParams()
@@ -39,22 +40,18 @@ export default function JoinGroupPage() {
     const { data: { user } } = await supabase.auth.getUser()
     
     if (!user) {
-      // Redirect to login with a next param to return here
       router.push(`/login?next=/join/${id}`)
       return
     }
 
-    // Add to group_members
     const { error: joinError } = await supabase
       .from('group_members')
       .insert([{ group_id: id, user_id: user.id }])
     
-    // Ignore error if already a member (duplicate key)
     if (joinError && joinError.code !== '23505') {
-       alert("Entry failed: " + joinError.message)
+       toast.error("Entry failed: " + joinError.message)
        setJoining(false)
     } else {
-       // Success! Redirect to the group chat
        router.push(`/dashboard/groups/${id}`)
     }
   }
@@ -79,7 +76,6 @@ export default function JoinGroupPage() {
 
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-black p-4 overflow-hidden relative text-white">
-      {/* Background Decor */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/20 blur-[120px] rounded-full pointer-events-none opacity-20" />
       
       <GlassCard className="p-12 border-accent/40 relative z-10 max-w-md w-full bg-accent/[0.02]">

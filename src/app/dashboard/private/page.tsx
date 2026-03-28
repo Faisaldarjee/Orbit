@@ -9,6 +9,7 @@ import { MessageSquare, Send, CheckCircle2, XCircle, Loader2, Sparkles, ShieldAl
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 
 export default function PrivateMoonPage() {
   const [loading, setLoading] = useState(true)
@@ -26,7 +27,6 @@ export default function PrivateMoonPage() {
       if (!user) return
       setUser(user)
 
-      // Initial Fetch
       await refreshData(user.id)
       setLoading(false)
     }
@@ -111,9 +111,20 @@ export default function PrivateMoonPage() {
       .update({ status: 'accepted', content: 'Signal established. Safe transmission initiated.' })
       .eq('id', dm.id)
     
-    if (!error) {
-      alert("Signal Accepted.")
+    if (error) {
+      toast.error("Signal acceptance failed.")
+    } else {
+      toast.success("Signal Accepted.")
       setActiveChat(dm.sender_id)
+    }
+  }
+
+  const handleReject = async (dmId: string) => {
+    const { error } = await supabase.from('dm_messages').delete().eq('id', dmId)
+    if (error) {
+      toast.error("Signal termination failed.")
+    } else {
+      toast.info("Signal rejected.")
     }
   }
 
@@ -143,7 +154,7 @@ export default function PrivateMoonPage() {
                     <p className="text-[10px] text-white/40 mb-4 truncate italic">{req.content}</p>
                     <div className="flex gap-2">
                       <Button onClick={() => handleAccept(req)} variant="secondary" size="sm" className="flex-1 h-8 bg-accent text-white text-[10px] uppercase font-black">ACCEPT</Button>
-                      <Button onClick={() => supabase.from('dm_messages').delete().eq('id', req.id)} variant="ghost" size="sm" className="w-8 h-8 p-0 bg-white/5"><XCircle className="w-4 h-4" /></Button>
+                      <Button onClick={() => handleReject(req.id)} variant="ghost" size="sm" className="w-8 h-8 p-0 bg-white/5"><XCircle className="w-4 h-4" /></Button>
                     </div>
                   </GlassCard>
                 ))}

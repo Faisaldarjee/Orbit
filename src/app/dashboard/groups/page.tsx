@@ -10,6 +10,7 @@ import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 export default function SolarSystemsPage() {
   const router = useRouter()
@@ -26,7 +27,6 @@ export default function SolarSystemsPage() {
       if (!user) return
       setUser(user)
 
-      // Fetch groups where user is a member
       const { data, error: fetchError } = await supabase
         .from('group_members')
         .select(`
@@ -41,7 +41,6 @@ export default function SolarSystemsPage() {
       if (fetchError) {
         console.error("Fetch error:", fetchError.message)
       } else if (data) {
-        // Extract group objects from join query
         const joinedGroups = data.map((item: any) => item.groups).filter(g => g !== null)
         setSystems(joinedGroups)
       }
@@ -49,7 +48,6 @@ export default function SolarSystemsPage() {
     }
     init()
 
-    // Real-time listener for new systems
     const channel = supabase
       .channel('group-sync')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'groups' }, (payload) => {
@@ -80,36 +78,33 @@ export default function SolarSystemsPage() {
     }
 
     if (group) {
-      // Automatically add creator as admin member
       await supabase.from('group_members').insert([{ group_id: group.id, user_id: user.id, role: 'admin' }])
       setNewGroupName("")
       setShowCreate(false)
-      alert(`System '${group.name}' established successfully!`)
+      toast.success(`System '${group.name}' established successfully!`)
     }
     setLoading(false)
   }
 
   const handleJoinSystem = async (groupId: string) => {
     if (!user) return
-    const { error } = await supabase
-      .from('group_members')
-      .insert([{ group_id: groupId, user_id: user.id }])
+    const { error } = await supabase.from('group_members').insert([{ group_id: groupId, user_id: user.id }])
     
     if (error) {
       if (error.code === '23505') {
-        alert("You are already part of this system's orbit.")
+        toast.info("You are already part of this system's orbit.")
       } else {
-        alert("Registration failed: " + error.message)
+        toast.error("Registration failed: " + error.message)
       }
     } else {
-      alert("Successfully added to the system's orbit!")
+      toast.success("Successfully added to the system's orbit!")
     }
   }
 
   const handleCopyInvite = (groupId: string) => {
     const url = `${window.location.origin}/join/${groupId}`
     navigator.clipboard.writeText(url)
-    alert("Solar Invitation Link copied to clipboard!")
+    toast.info("Solar Invitation Link copied to clipboard!")
   }
 
   if (loading && systems.length === 0) return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>

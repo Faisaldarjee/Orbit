@@ -10,6 +10,7 @@ import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -56,7 +57,7 @@ export default function ProfilePage() {
       .upload(filePath, file)
 
     if (uploadError) {
-      alert("Upload failed: " + uploadError.message)
+      toast.error("Upload failed: " + uploadError.message)
     } else {
       const { data: { publicUrl } } = supabase.storage.from('Avatar').getPublicUrl(filePath)
       
@@ -65,7 +66,10 @@ export default function ProfilePage() {
         .update({ avatar_url: publicUrl })
         .eq('id', profile.id)
       
-      if (!updateError) setAvatarUrl(publicUrl)
+      if (!updateError) {
+        setAvatarUrl(publicUrl)
+        toast.success("Avatar synchronization complete.")
+      }
     }
     setUpdating(false)
   }
@@ -83,10 +87,9 @@ export default function ProfilePage() {
       .eq('id', profile.id)
     
     if (error) {
-      alert("Update failed: " + error.message)
+      toast.error("Update failed: " + error.message)
     } else {
-      alert("Identity Protocol Updated.")
-      // Update local state to reflect changes immediately
+      toast.success("Identity Protocol Updated.")
       setProfile({ ...profile, full_name: fullName, privacy_mode: privacy })
     }
     setUpdating(false)

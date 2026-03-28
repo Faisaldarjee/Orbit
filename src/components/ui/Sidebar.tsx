@@ -3,13 +3,14 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { OrbitalLogo } from "@/components/ui/OrbitalLogo"
-import { Globe, MessageSquare, Users, Settings, LogOut, User } from "lucide-react"
+import { Globe, MessageSquare, Users, Settings, LogOut, User, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { name: "Public Orb", icon: Globe, href: "/dashboard", color: "text-secondary" },
   { name: "Private Moon", icon: MessageSquare, href: "/dashboard/private", color: "text-primary" },
   { name: "Solar Systems", icon: Users, href: "/dashboard/groups", color: "text-accent" },
+  { name: "Orbital Search", icon: Search, href: "/dashboard/search", color: "text-accent" },
 ]
 
 export const Sidebar = () => {

@@ -9,16 +9,7 @@ import { Send, Globe, Search, Sparkles, XCircle } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
-
-interface Message {
-  id: number
-  content: string
-  created_at: string
-  profiles: {
-    full_name: string
-    avatar_url?: string
-  }
-}
+import { toast } from "sonner"
 
 export default function PublicOrbPage() {
   const [messages, setMessages] = useState<any[]>([])
@@ -27,16 +18,14 @@ export default function PublicOrbPage() {
   const chatRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Get current user
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
     }
     getUser()
 
-    // Initial fetch
     const fetchMessages = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('messages')
         .select(`
           id,
@@ -54,11 +43,9 @@ export default function PublicOrbPage() {
     }
     fetchMessages()
 
-    // Real-time subscription
     const channel = supabase
       .channel('public-orb')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-        // Fetch new message with profile info
         const { data } = await supabase
           .from('messages')
           .select('id, content, created_at, profiles(full_name, avatar_url)')
@@ -67,7 +54,6 @@ export default function PublicOrbPage() {
         
         if (data) {
           setMessages(prev => [...prev, data])
-          // Scroll to bottom
           setTimeout(() => {
             chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' })
           }, 100)
@@ -89,7 +75,7 @@ export default function PublicOrbPage() {
       .insert([{ user_id: user.id, content: input }])
 
     if (error) {
-      console.error("Transmission error:", error.message)
+      toast.error("Transmission error: " + error.message)
     } else {
       setInput("")
     }
@@ -112,9 +98,9 @@ export default function PublicOrbPage() {
       }])
     
     if (error) {
-      alert("Signal error: " + error.message)
+      toast.error("Signal error: " + error.message)
     } else {
-      alert("Signal Request Transmitted. Waiting for approval.")
+      toast.success("Signal Request Transmitted. Waiting for approval.")
       setSelectedUser(null)
     }
     setRequestSending(false)

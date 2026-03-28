@@ -13,12 +13,12 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Orbit | Next-Gen Cosmic Chat",
-  description: "A premium, engaging platform for global cosmic connectivity.",
-  icons: {
-    icon: "/favicon.ico",
-  }
+  title: "Orbit",
+  description: "Connecting the Cosmos | Next-Gen Cosmic Chat",
 };
+
+import { Toaster } from "sonner";
+import { RealtimeProvider } from "@/components/providers/RealtimeProvider";
 
 export default function RootLayout({
   children,
@@ -34,9 +34,27 @@ export default function RootLayout({
           <div className="absolute bottom-[10%] right-[20%] w-[35rem] h-[35rem] bg-secondary/10 rounded-full blur-[100px] animate-pulse delay-700" />
         </div>
         
-        <main className="flex-1 relative z-0">
-          {children}
-        </main>
+        <RealtimeProvider>
+          <main className="flex-1 relative z-0">
+            {children}
+          </main>
+        </RealtimeProvider>
+        
+        <Toaster 
+          theme="dark" 
+          position="top-right"
+          expand={false}
+          richColors
+          closeButton
+          toastOptions={{
+            style: {
+              background: 'rgba(10, 11, 13, 0.8)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              borderRadius: '1.25rem',
+            }
+          }}
+        />
       </body>
     </html>
   );
