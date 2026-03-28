@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Send, Globe, Search, Sparkles, XCircle, WifiOff, Zap } from "lucide-react"
+import { Send, Globe, Search, Sparkles, XCircle, WifiOff, Zap, ShieldAlert } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -18,29 +18,37 @@ export default function PublicOrbPage() {
   const chatRef = useRef<HTMLDivElement>(null)
   const [syncStatus, setSyncStatus] = useState<string>("connecting")
 
-  // 🛰️ SYSTEM CHECK LOGIC
+  // 🛰️ SIGNAL STRENGTH & FINGERPRINT DIAGNOSTIC
   const performSystemCheck = async () => {
-    toast.loading("Probing Universal Signal...", { id: "globcheck" });
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "MISSING";
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "MISSING";
+    const fingerprint = `URL: ${url.substring(0, 15)}... | KEY: ${key.substring(0, 5)}...`;
+    
+    toast.loading(`Probing Global Signal: ${fingerprint}`, { id: "globcheck" });
+    
     try {
       const { error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1);
+      
       if (error) {
         toast.error("Universal Signal: FAILED", { 
           id: "globcheck",
-          description: `Authentication Error: ${error.message}. Verify Vercel keys.`,
-          duration: 10000
+          description: `Auth Error: ${error.message}. Fingerprint: ${fingerprint}`,
+          duration: 15000,
+          icon: <ShieldAlert className="w-5 h-5" />
         });
       } else {
-        toast.success("Universal Signal: OK", { 
+        toast.success("Universal Signal: NOMINAL", { 
           id: "globcheck",
-          description: "Database sync confirmed. Checking Realtime Publication next...",
-          duration: 5000
+          description: `Credentials Verified (${fingerprint}). Checking Realtime...`,
+          duration: 10000,
+          icon: <Zap className="w-5 h-5 text-green-500" />
         });
         if (syncStatus !== 'SUBSCRIBED') {
            window.location.reload();
         }
       }
     } catch (err: any) {
-      toast.error("System Check Error", { id: "globcheck", description: err.message });
+      toast.error("Global System Check Error", { id: "globcheck", description: err.message });
     }
   };
 
@@ -49,8 +57,8 @@ export default function PublicOrbPage() {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       if (!url || !key) {
-        toast.error("Global Signal Missing", {
-           description: "Vercel is not transmitting credentials for the Public Orb.",
+        toast.error("Global Signal Configuration Missing", {
+           description: "Vercel environment variables are NOT being transmitted to the browser.",
            duration: Infinity,
            icon: <WifiOff className="w-5 h-5 text-red-500" />
         });
@@ -61,8 +69,8 @@ export default function PublicOrbPage() {
 
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      setUser(currentUser)
     }
     getUser()
 
@@ -89,7 +97,6 @@ export default function PublicOrbPage() {
     const channel = supabase
       .channel('public-orb')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-        console.log("Orbital broadcast received:", payload)
         try {
           const { data } = await supabase
             .from('messages')
@@ -112,11 +119,12 @@ export default function PublicOrbPage() {
         setSyncStatus(status);
         console.log(`Global Sync Status:`, status, err)
         if (status === 'SUBSCRIBED') {
-          toast.success("Orbital Sync Established", { description: "Global frequency locked." })
+          toast.success("Orbital Sync Established", { id: "global-success", description: "Global frequency locked." })
         }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error("Global Sync Failure:", err)
           toast.error("Orbital Sync Interrupted", { 
+            id: "global-error",
             description: `Global frequency drifting: ${err || 'Unstable Connection'}`,
           })
         }
@@ -136,13 +144,12 @@ export default function PublicOrbPage() {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !user) return
+    const content = input.trim();
     setInput("")
     const { error } = await supabase
       .from('messages')
-      .insert([{ user_id: user.id, content: input.trim() }])
-    if (error) {
-      toast.error("Transmission error: " + error.message)
-    }
+      .insert([{ user_id: user.id, content }])
+    if (error) toast.error("Transmission error: " + error.message)
   }
 
   const [selectedUser, setSelectedUser] = useState<any>(null)
@@ -159,10 +166,9 @@ export default function PublicOrbPage() {
         content: `Voyager ${user.user_metadata?.full_name || 'Anonymous'} is requesting a secure signal connection.`,
         status: 'pending'
       }])
-    if (error) {
-      toast.error("Signal error: " + error.message)
-    } else {
-      toast.success("Signal Request Transmitted. Waiting for approval.")
+    if (error) toast.error("Signal error: " + error.message)
+    else {
+      toast.success("Signal Request Transmitted.")
       setSelectedUser(null)
     }
     setRequestSending(false)
@@ -190,7 +196,7 @@ export default function PublicOrbPage() {
              )}
            >
               <Zap className="w-3 h-3 mr-2" /> 
-              {syncStatus === 'SUBSCRIBED' ? "Global Status: Nominal" : "Global Status: Low Signal"}
+              {syncStatus === 'SUBSCRIBED' ? "Global Status: Nominal" : "Scan Required: Low Signal"}
            </Button>
 
           <div className="hidden md:flex items-center gap-1 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-xs font-bold">
@@ -226,11 +232,8 @@ export default function PublicOrbPage() {
                   </div>
                   <div className={cn("flex flex-col gap-1.5", m.user_id === user?.id ? "items-end" : "items-start")}>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black font-outfit uppercase tracking-[0.2em] text-secondary/80">
+                       <span className="text-[10px] font-black font-outfit uppercase tracking-[0.2em] text-secondary/80">
                         {m.profiles?.full_name || "Unknown Voyager"}
-                      </span>
-                      <span className="text-[8px] text-white/20 uppercase font-bold tracking-widest">
-                        {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
                     <div className={cn(
@@ -278,17 +281,6 @@ export default function PublicOrbPage() {
                    LIVE
                  </div>
                </div>
-            </div>
-          </GlassCard>
-
-          <GlassCard className="p-4 border-white/5 bg-gradient-to-br from-primary/10 to-transparent">
-            <div className="flex items-center gap-2 mb-2 text-primary">
-              <Sparkles className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-widest">Global Event</span>
-            </div>
-            <p className="text-xs text-white/60 mb-3">Meteor Shower starting in 2h. Double XP for all chatters!</p>
-            <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
-              <div className="w-2/3 h-full bg-primary" />
             </div>
           </GlassCard>
         </div>

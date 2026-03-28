@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Users, Send, Globe, ShieldCheck, Loader2, ArrowLeft, MoreHorizontal, Share2, Shield, Check, X, Settings, WifiOff, Zap } from "lucide-react"
+import { Users, Send, Globe, ShieldCheck, Loader2, ArrowLeft, MoreHorizontal, Share2, Shield, Check, X, Settings, WifiOff, Zap, ShieldAlert } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -27,34 +27,32 @@ export default function GroupChatPage() {
   const chatRef = useRef<HTMLDivElement>(null)
   const [syncStatus, setSyncStatus] = useState<string>("connecting")
 
-  // 🛰️ SIGNAL DIAGNOSTIC & SYSTEM CHECK
+  // 🛰️ SIGNAL STRENGTH & FINGERPRINT DIAGNOSTIC
   const performSystemCheck = async () => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "MISSING";
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "MISSING";
+    const fingerprint = `URL: ${url.substring(0, 15)}... | KEY: ${key.substring(0, 5)}...`;
     
-    toast.loading("Probing Database Signal...", { id: "syscheck" });
+    toast.loading(`Probing Signal: ${fingerprint}`, { id: "syscheck" });
     
     try {
-      // Test 1: Simple Select
       const { error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1);
       
       if (error) {
-        console.error("Signal Probe Failed:", error);
         toast.error("Database Signal: FAILED", { 
           id: "syscheck",
-          description: `Authentication Error: ${error.message}. Check your Vercel keys.`,
-          duration: 10000
+          description: `Auth Error: ${error.message}. Fingerprint: ${fingerprint}`,
+          duration: 15000,
+          icon: <ShieldAlert className="w-5 h-5" />
         });
       } else {
-        toast.success("Database Signal: OK", { 
+        toast.success("Database Signal: NOMINAL", { 
           id: "syscheck",
-          description: "Credentials Verified. The problem is likely with Real-time Publications.",
-          duration: 5000
+          description: `Credentials Verified (${fingerprint}). If sync still drifts, check Supabase Publications.`,
+          duration: 10000,
+          icon: <Zap className="w-5 h-5 text-green-500" />
         });
-
-        // Test 2: Channel Health
         if (syncStatus !== 'SUBSCRIBED') {
-           toast.info("Attempting Signal Re-Sync...", { description: "Requesting fresh orbital slot." });
            window.location.reload();
         }
       }
@@ -67,10 +65,9 @@ export default function GroupChatPage() {
     const checkSignal = () => {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      
       if (!url || !key) {
         toast.error("Signal Configuration Missing", {
-           description: "Vercel is not transmitting credentials. Please check your Environment Variables.",
+           description: "Vercel environment variables are NOT being transmitted to the browser.",
            duration: Infinity,
            icon: <WifiOff className="w-5 h-5 text-red-500" />
         });
@@ -82,18 +79,18 @@ export default function GroupChatPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        if (!currentUser) {
           router.push("/login")
           return
         }
-        setUser(user)
+        setUser(currentUser)
 
         const { data: membership, error: memError } = await supabase
           .from('group_members')
           .select('*')
           .eq('group_id', id)
-          .eq('user_id', user.id)
+          .eq('user_id', currentUser.id)
           .maybeSingle()
         
         if (memError || !membership) {
@@ -110,7 +107,7 @@ export default function GroupChatPage() {
         if (gError) throw gError
         setGroup(groupData)
 
-        if (groupData.created_by === user.id) {
+        if (groupData.created_by === currentUser.id) {
           const { data: reqData } = await supabase
             .from('group_join_requests')
             .select('*, profiles(full_name, avatar_url)')
@@ -149,7 +146,6 @@ export default function GroupChatPage() {
         table: 'group_messages',
         filter: `group_id=eq.${id}`
       }, async (payload) => {
-        console.log("Transmission received:", payload)
         try {
           const { data: profile } = await supabase
             .from('profiles')
@@ -171,11 +167,12 @@ export default function GroupChatPage() {
         setSyncStatus(status);
         console.log(`Sync Status [${id}]:`, status, err)
         if (status === 'SUBSCRIBED') {
-          toast.success("Orbital Sync Established", { description: "Signal frequency locked." })
+          toast.success("Orbital Sync Established", { id: "sync-success", description: "Signal frequency locked." })
         }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error("Critical Sync Failure:", err)
           toast.error("Orbital Sync Interrupted", { 
+            id: "sync-error",
             description: `Global frequency drifting: ${err || 'Unstable Connection'}`,
           })
         }
@@ -193,32 +190,22 @@ export default function GroupChatPage() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !user || !id) return
-
+    const content = input.trim();
     setInput("")
-
     const { error } = await supabase
       .from('group_messages')
-      .insert([{ group_id: id, user_id: user.id, content: input.trim() }])
-    
-    if (error) {
-      toast.error("Signal Transmission Failed")
-    }
+      .insert([{ group_id: id, user_id: user.id, content }])
+    if (error) toast.error("Signal Transmission Failed")
   }
 
   const handleApproveRequest = async (requestId: string, targetUserId: string) => {
     const { error: memError } = await supabase
       .from('group_members')
       .insert([{ group_id: id, user_id: targetUserId, role: 'member' }])
-    
-    if (memError) {
-      toast.error("Entry Synchronization Failed")
-      return
-    }
-
+    if (memError) return toast.error("Entry Synchronization Failed")
     await supabase.from('group_join_requests').update({ status: 'accepted' }).eq('id', requestId)
     setRequests(prev => prev.filter(r => r.id !== requestId))
     toast.success("Voyager Synchronized to System")
-    
     const { data: newMembers } = await supabase.from('group_members').select('*, profiles(full_name, avatar_url)').eq('group_id', id)
     if (newMembers) setMembers(newMembers)
   }
@@ -232,10 +219,8 @@ export default function GroupChatPage() {
   const handleDismissMember = async (targetUserId: string) => {
     if (targetUserId === group.created_by) return
     const { error } = await supabase.from('group_members').delete().eq('group_id', id).eq('user_id', targetUserId)
-    
-    if (error) {
-      toast.error("Dismissal Protocol Interrupted")
-    } else {
+    if (error) toast.error("Dismissal Protocol Interrupted")
+    else {
       setMembers(prev => prev.filter(m => m.user_id !== targetUserId))
       toast.success("Voyager Ejected from System")
     }
@@ -271,7 +256,7 @@ export default function GroupChatPage() {
              )}
            >
               <Zap className="w-3 h-3 mr-2" /> 
-              {syncStatus === 'SUBSCRIBED' ? "System Status: Nominal" : "System Status: Low Signal"}
+              {syncStatus === 'SUBSCRIBED' ? "Scan Complete: Nominal" : "Scan Required: Low Signal"}
            </Button>
 
            {group?.created_by === user?.id && (
@@ -290,7 +275,7 @@ export default function GroupChatPage() {
            <Button variant="ghost" size="sm" className="bg-accent/10 text-accent border border-accent/20 font-black text-[10px] uppercase tracking-widest" onClick={() => {
               const url = `${window.location.origin}/join/${id}`;
               navigator.clipboard.writeText(url);
-              toast.success("Invitation Link copied to clipboard!");
+              toast.success("Link copied!");
            }}>
               <Share2 className="w-3 h-3 mr-2" /> Invite
            </Button>
@@ -304,7 +289,7 @@ export default function GroupChatPage() {
               <div className="h-full flex flex-col items-center justify-center text-center opacity-20">
                 <Globe className="w-16 h-16 mb-4 animate-spin-slow" />
                 <p className="text-[10px] font-black uppercase tracking-widest">Initial Orbit Established</p>
-                <p className="text-[8px] max-w-[200px] mt-2 italic font-bold">Transmit the first signal to synchronize this solar system.</p>
+                <p className="text-[8px] max-w-[200px] mt-2 italic font-bold">Transmit the first signal.</p>
               </div>
             ) : (
               messages.map((msg) => (
@@ -357,7 +342,7 @@ export default function GroupChatPage() {
                   <GlassCard className="p-4 border-accent/20 bg-accent/5">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-accent mb-4 flex items-center justify-between">Pending Signals <Shield className="w-3 h-3" /></h3>
                     <div className="space-y-3">
-                      {requests.length === 0 ? <p className="text-[8px] text-white/20 italic uppercase font-bold text-center py-4">No pending entry signals.</p> : requests.map((req) => (
+                      {requests.length === 0 ? <p className="text-[8px] text-white/20 italic uppercase font-bold text-center py-4">No pending signals.</p> : requests.map((req) => (
                         <div key={req.id} className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-3">
                           <div className="flex items-center gap-3">
                             <div className="w-6 h-6 rounded bg-primary/20 flex items-center justify-center text-[8px] font-bold text-primary">{req.profiles?.full_name?.[0]}</div>
@@ -374,32 +359,13 @@ export default function GroupChatPage() {
                   <GlassCard className="p-4 border-white/5">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4 flex items-center gap-2"><Settings className="w-3 h-3" /> System Control</h3>
                     <div className="space-y-4">
-                      <p className="text-[8px] text-white/20 leading-relaxed uppercase font-bold">
-                        Warning: System modifications affect all synchronized voyagers in this solar orbit.
-                      </p>
+                      <p className="text-[8px] text-white/20 leading-relaxed uppercase font-bold">Warning: affect all voyagers.</p>
                       {!showTerminateConfirm ? (
-                        <Button 
-                          variant="ghost" 
-                          className="w-full justify-start text-[8px] font-black uppercase tracking-widest text-accent/60 hover:text-accent hover:bg-accent/5 p-2 h-auto" 
-                          onClick={() => setShowTerminateConfirm(true)}
-                        >
-                          Terminate System
-                        </Button>
+                        <Button variant="ghost" className="w-full justify-start text-[8px] font-black uppercase tracking-widest text-accent/60 hover:text-accent hover:bg-accent/5 p-2 h-auto" onClick={() => setShowTerminateConfirm(true)}>Terminate System</Button>
                       ) : (
                         <div className="flex gap-2">
-                           <Button 
-                             className="flex-1 h-8 bg-accent text-white text-[8px] font-black uppercase tracking-widest"
-                             onClick={() => supabase.from('groups').delete().eq('id', id).then(() => router.push('/dashboard/groups'))}
-                           >
-                             Confirm Terminate
-                           </Button>
-                           <Button 
-                             variant="ghost" 
-                             className="flex-1 h-8 bg-white/5 text-white/40 text-[8px] font-black uppercase tracking-widest hover:bg-white/10"
-                             onClick={() => setShowTerminateConfirm(false)}
-                           >
-                             Cancel
-                           </Button>
+                           <Button className="flex-1 h-8 bg-accent text-white text-[8px] font-black uppercase tracking-widest" onClick={() => supabase.from('groups').delete().eq('id', id).then(() => router.push('/dashboard/groups'))}>Confirm</Button>
+                           <Button variant="ghost" className="flex-1 h-8 bg-white/5 text-white/40 text-[8px] font-black uppercase tracking-widest hover:bg-white/10" onClick={() => setShowTerminateConfirm(false)}>Cancel</Button>
                         </div>
                       )}
                     </div>
