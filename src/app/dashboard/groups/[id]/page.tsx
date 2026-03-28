@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Users, Send, Globe, Loader2, ArrowLeft, Share2, Shield, Check, X, MessageSquare } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { cn } from "@/lib/utils"
+import { cn, formatTime } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 
@@ -104,21 +104,26 @@ export default function GroupChatPage() {
           table: 'group_messages',
           filter: `group_id=eq.${id}`
         }, async (payload) => {
+          // 🚀 INSTANT SYNC: Push to state immediately
+          const rawMsg = payload.new as any;
+          setMessages(prev => {
+            if (prev.some((m: any) => m.id === rawMsg.id)) return prev;
+            return [...prev, { ...rawMsg, profiles: { full_name: "Voyager", avatar_url: null } }];
+          });
+
+          // 🛰️ HYDRATION: Fetch profile in background
           try {
             const { data: profile } = await supabase
               .from('profiles')
               .select('full_name, avatar_url')
-              .eq('id', payload.new.user_id)
+              .eq('id', rawMsg.user_id)
               .maybeSingle()
             
-            const newMessage = { ...payload.new as any, profiles: profile || { full_name: "Voyager", avatar_url: null } }
-            setMessages(prev => {
-              const exists = prev.some((m: any) => m.id === (newMessage as any).id)
-              if (exists) return prev
-              return [...prev, newMessage]
-            })
+            if (profile) {
+              setMessages(prev => prev.map((m: any) => m.id === rawMsg.id ? { ...m, profiles: profile } : m));
+            }
           } catch (err) {
-            console.error("Sync Error:", err)
+            console.error("Sync Hydration Error:", err)
           }
         })
         .subscribe((status, err) => {
@@ -260,7 +265,10 @@ export default function GroupChatPage() {
                     {msg.profiles?.avatar_url ? <img src={msg.profiles.avatar_url} className="w-full h-full object-cover" /> : msg.profiles?.full_name?.[0]}
                   </div>
                   <div className={cn("flex flex-col", msg.user_id === user?.id ? "items-end" : "items-start")}>
-                    <div className="text-[8px] font-black uppercase text-white/40 mb-1 tracking-widest">{msg.profiles?.full_name}</div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="text-[8px] font-black uppercase text-white/40 tracking-widest">{msg.profiles?.full_name}</div>
+                      <div className="text-[7px] font-bold text-white/10 uppercase tracking-widest">{formatTime(msg.created_at)}</div>
+                    </div>
                     <div className={cn("px-4 py-2.5 rounded-2xl text-xs font-medium max-w-sm", msg.user_id === user?.id ? "bg-accent text-white shadow-[0_0_20px_rgba(244,63,94,0.1)]" : "bg-white/5 border border-white/10 text-white/80")}>
                       {msg.content}
                     </div>

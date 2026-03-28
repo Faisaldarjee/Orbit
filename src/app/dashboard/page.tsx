@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Send, Globe, Search, Sparkles, XCircle, WifiOff, Zap, ShieldAlert, RefreshCw } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { cn } from "@/lib/utils"
+import { cn, formatTime } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 
@@ -56,22 +56,26 @@ export default function PublicOrbPage() {
        channel = supabase
         .channel('public-orb')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+          // 🚀 INSTANT SYNC: Add to UI immediately
+          const rawMsg = payload.new as any;
+          setMessages(prev => {
+            if (prev.some(m => m.id === rawMsg.id)) return prev;
+            return [...prev, { ...rawMsg, profiles: { full_name: "Voyager", avatar_url: null } }];
+          });
+
+          // 🛰️ HYDRATION: Fetch profile in background
           try {
-            const { data } = await supabase
-              .from('messages')
-              .select('id, content, created_at, user_id, profiles(full_name, avatar_url)')
-              .eq('id', payload.new.id)
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('full_name, avatar_url')
+              .eq('id', rawMsg.user_id)
               .maybeSingle()
             
-            if (data) {
-              setMessages(prev => {
-                const exists = prev.some(m => m.id === data.id)
-                if (exists) return prev
-                return [...prev, data]
-              })
+            if (profile) {
+              setMessages(prev => prev.map(m => m.id === rawMsg.id ? { ...m, profiles: profile } : m));
             }
           } catch (err) {
-            console.error("Broadcast Sync Error:", err)
+            console.error("Broadcast Hydration Error:", err)
           }
         })
         .subscribe((status, err) => {
@@ -180,10 +184,13 @@ export default function PublicOrbPage() {
                       m.profiles?.full_name?.[0]?.toUpperCase() || "V"
                     )}
                   </div>
-                  <div className={cn("flex flex-col gap-1.5", m.user_id === user?.id ? "items-end" : "items-start")}>
+                   <div className={cn("flex flex-col gap-1.5", m.user_id === user?.id ? "items-end" : "items-start")}>
                     <div className="flex items-center gap-2">
                        <span className="text-[10px] font-black font-outfit uppercase tracking-[0.2em] text-secondary/80">
                         {m.profiles?.full_name || "Unknown Voyager"}
+                      </span>
+                      <span className="text-[9px] font-bold text-white/20 font-outfit uppercase tracking-widest mt-0.5">
+                        {formatTime(m.created_at)}
                       </span>
                     </div>
                     <div className={cn(
