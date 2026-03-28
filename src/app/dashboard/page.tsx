@@ -31,6 +31,7 @@ export default function PublicOrbPage() {
           id,
           content,
           created_at,
+          user_id,
           profiles (
             full_name,
             avatar_url
@@ -46,38 +47,67 @@ export default function PublicOrbPage() {
     const channel = supabase
       .channel('public-orb')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-        const { data } = await supabase
-          .from('messages')
-          .select('id, content, created_at, profiles(full_name, avatar_url)')
-          .eq('id', payload.new.id)
-          .single()
-        
-        if (data) {
-          setMessages(prev => [...prev, data])
-          setTimeout(() => {
-            chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' })
-          }, 100)
+        console.log("Orbital broadcast received:", payload)
+        try {
+          const { data } = await supabase
+            .from('messages')
+            .select('id, content, created_at, user_id, profiles(full_name, avatar_url)')
+            .eq('id', payload.new.id)
+            .maybeSingle()
+          
+          if (data) {
+            setMessages(prev => {
+              const exists = prev.some(m => m.id === data.id)
+              if (exists) return prev
+              return [...prev, data]
+            })
+          }
+        } catch (err) {
+          console.error("Broadcast Sync Error:", err)
         }
       })
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log("Orbital Sync Established for Public Orb")
+          toast.success("Orbital Sync Established", { description: "Global frequency locked." })
+        }
+        if (status === 'CHANNEL_ERROR') {
+          console.error("Sync Interrupted for Public Orb")
+          toast.error("Orbital Sync Interrupted", { description: "Global frequency drifting." })
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
   }, [])
 
+  useEffect(() => {
+    if (chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight
+    }
+  }, [messages])
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !user) return
 
+    const tempMsg = {
+      id: Math.random(),
+      user_id: user.id,
+      content: input.trim(),
+      created_at: new Date().toISOString(),
+      profiles: { full_name: user.user_metadata?.full_name || "You", avatar_url: null }
+    }
+
+    setInput("")
+
     const { error } = await supabase
       .from('messages')
-      .insert([{ user_id: user.id, content: input }])
+      .insert([{ user_id: user.id, content: input.trim() }])
 
     if (error) {
       toast.error("Transmission error: " + error.message)
-    } else {
-      setInput("")
     }
   }
 
@@ -126,7 +156,7 @@ export default function PublicOrbPage() {
       </header>
 
       <div className="flex-1 flex gap-6 overflow-hidden">
-        <div className="flex-1 flex flex-col glass-card border-white/5 relative">
+        <div className="flex-1 flex flex-col glass-card border-white/5 relative bg-white/[0.01]">
           <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
             <AnimatePresence>
               {messages.map((m) => (
@@ -134,11 +164,14 @@ export default function PublicOrbPage() {
                   key={m.id}
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="flex gap-4 max-w-[85%]"
+                  className={cn("flex gap-4 max-w-[85%]", m.user_id === user?.id ? "flex-row-reverse ml-auto" : "")}
                 >
                   <div 
-                    onClick={() => setSelectedUser({ id: m.user_id, ...m.profiles })}
-                    className="w-10 h-10 rounded-xl bg-secondary/20 flex items-center justify-center text-secondary font-black overflow-hidden border border-secondary/20 shadow-[0_0_15px_rgba(6,182,212,0.1)] shrink-0 cursor-pointer hover:scale-105 transition-transform"
+                    onClick={() => m.user_id !== user?.id && setSelectedUser({ id: m.user_id, ...m.profiles })}
+                    className={cn(
+                      "w-10 h-10 rounded-xl bg-secondary/20 flex items-center justify-center text-secondary font-black overflow-hidden border border-secondary/20 shadow-[0_0_15px_rgba(6,182,212,0.1)] shrink-0 transition-transform",
+                      m.user_id !== user?.id && "cursor-pointer hover:scale-105"
+                    )}
                   >
                     {m.profiles?.avatar_url ? (
                       <img src={m.profiles.avatar_url} alt={m.profiles.full_name} className="w-full h-full object-cover" />
@@ -146,7 +179,7 @@ export default function PublicOrbPage() {
                       m.profiles?.full_name?.[0]?.toUpperCase() || "V"
                     )}
                   </div>
-                  <div className="flex flex-col gap-1.5">
+                  <div className={cn("flex flex-col gap-1.5", m.user_id === user?.id ? "items-end" : "items-start")}>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-black font-outfit uppercase tracking-[0.2em] text-secondary/80">
                         {m.profiles?.full_name || "Unknown Voyager"}
@@ -155,7 +188,10 @@ export default function PublicOrbPage() {
                         {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <div className="bg-white/[0.03] border border-white/5 px-4 py-3 rounded-2xl rounded-tl-none shadow-sm ring-1 ring-white/5">
+                    <div className={cn(
+                      "px-4 py-3 rounded-2xl shadow-sm ring-1 ring-white/5",
+                      m.user_id === user?.id ? "bg-secondary/10 border-secondary/20 rounded-tr-none" : "bg-white/[0.03] border-white/5 rounded-tl-none"
+                    )}>
                       <p className="text-white/80 text-sm leading-relaxed">{m.content}</p>
                     </div>
                   </div>
@@ -172,7 +208,7 @@ export default function PublicOrbPage() {
                 placeholder="Broadcast your frequency..." 
                 className="pr-16 h-12"
               />
-              <Button type="submit" size="sm" className="absolute right-2 px-3 h-8">
+              <Button type="submit" size="sm" className="absolute right-2 px-3 h-8 bg-secondary text-white font-black hover:scale-105 transition-transform" disabled={!input.trim()}>
                 <Send className="w-4 h-4" />
               </Button>
             </div>
@@ -180,7 +216,7 @@ export default function PublicOrbPage() {
         </div>
 
         <div className="hidden lg:flex w-72 flex-col gap-4">
-          <GlassCard className="p-4 border-white/5">
+          <GlassCard className="p-4 border-white/5 bg-white/[0.01]">
             <h3 className="text-sm font-bold mb-4 font-outfit uppercase tracking-widest text-white/30">System Status</h3>
             <div className="space-y-4">
                <div className="flex flex-col gap-1">
@@ -222,7 +258,7 @@ export default function PublicOrbPage() {
               exit={{ opacity: 0, scale: 0.9 }}
               className="max-w-md w-full"
             >
-              <GlassCard className="p-8 border-white/10 relative">
+              <GlassCard className="p-8 border-white/10 relative bg-background/80 backdrop-blur-xl">
                 <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4 text-white/20 hover:text-white transition-colors">
                   <XCircle className="w-6 h-6" />
                 </button>
@@ -243,7 +279,7 @@ export default function PublicOrbPage() {
                     <Button 
                       onClick={handleSendRequest} 
                       disabled={requestSending}
-                      className="w-full bg-secondary text-white font-black py-6 rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                      className="w-full bg-secondary text-white font-black py-6 rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:scale-[1.02] transition-transform"
                     >
                       {requestSending ? "Transmitting..." : "Send Signal Request"}
                     </Button>

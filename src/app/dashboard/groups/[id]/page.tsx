@@ -96,16 +96,34 @@ export default function GroupChatPage() {
         table: 'group_messages',
         filter: `group_id=eq.${id}`
       }, async (payload) => {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, avatar_url')
-          .eq('id', payload.new.user_id)
-          .single()
-        
-        const newMessage = { ...payload.new, profiles: profile }
-        setMessages(prev => [...prev, newMessage])
+        console.log("Transmission received:", payload)
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('id', payload.new.user_id)
+            .maybeSingle()
+          
+          const newMessage = { ...payload.new, profiles: profile || { full_name: "Voyager", avatar_url: null } }
+          setMessages(prev => {
+            const exists = prev.some(m => m.id === newMessage.id)
+            if (exists) return prev
+            return [...prev, newMessage]
+          })
+        } catch (err) {
+          console.error("Sync Error:", err)
+        }
       })
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log("Orbital Sync Established for Group:", id)
+          toast.success("Orbital Sync Established", { description: "Signal frequency locked." })
+        }
+        if (status === 'CHANNEL_ERROR') {
+          console.error("Sync Interrupted for Group:", id)
+          toast.error("Orbital Sync Interrupted", { description: "Attempting to re-orient signal." })
+        }
+      })
 
     return () => { supabase.removeChannel(channel) }
   }, [id, router])
@@ -120,14 +138,23 @@ export default function GroupChatPage() {
     e.preventDefault()
     if (!input.trim() || !user || !id) return
 
+    const tempMsg = {
+      id: Math.random(),
+      group_id: id,
+      user_id: user.id,
+      content: input.trim(),
+      created_at: new Date().toISOString(),
+      profiles: { full_name: user.user_metadata?.full_name || "You", avatar_url: null }
+    }
+
+    setInput("")
+
     const { error } = await supabase
       .from('group_messages')
       .insert([{ group_id: id, user_id: user.id, content: input.trim() }])
     
     if (error) {
       toast.error("Signal Transmission Failed")
-    } else {
-      setInput("")
     }
   }
 
@@ -221,13 +248,13 @@ export default function GroupChatPage() {
               </div>
             ) : (
               messages.map((msg) => (
-                <div key={msg.id} className={cn("flex items-start gap-3", msg.user_id === user.id ? "flex-row-reverse" : "")}>
+                <div key={msg.id} className={cn("flex items-start gap-3", msg.user_id === user?.id ? "flex-row-reverse" : "")}>
                   <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-black text-accent overflow-hidden">
                     {msg.profiles?.avatar_url ? <img src={msg.profiles.avatar_url} className="w-full h-full object-cover" /> : msg.profiles?.full_name?.[0]}
                   </div>
-                  <div className={cn("flex flex-col", msg.user_id === user.id ? "items-end" : "items-start")}>
+                  <div className={cn("flex flex-col", msg.user_id === user?.id ? "items-end" : "items-start")}>
                     <div className="text-[8px] font-black uppercase text-white/40 mb-1 tracking-widest">{msg.profiles?.full_name}</div>
-                    <div className={cn("px-4 py-2.5 rounded-2xl text-xs font-medium max-w-sm", msg.user_id === user.id ? "bg-accent text-white shadow-[0_0_20px_rgba(244,63,94,0.1)]" : "bg-white/5 border border-white/10 text-white/80")}>
+                    <div className={cn("px-4 py-2.5 rounded-2xl text-xs font-medium max-w-sm", msg.user_id === user?.id ? "bg-accent text-white shadow-[0_0_20px_rgba(244,63,94,0.1)]" : "bg-white/5 border border-white/10 text-white/80")}>
                       {msg.content}
                     </div>
                   </div>
@@ -256,7 +283,7 @@ export default function GroupChatPage() {
                           <div className="text-[10px] font-black uppercase truncate">{m.profiles?.full_name}</div>
                           <div className="text-[8px] text-white/20 uppercase font-bold">{m.role}</div>
                        </div>
-                       {group?.created_by === user?.id && m.user_id !== user.id && (
+                       {group?.created_by === user?.id && m.user_id !== user?.id && (
                          <Button variant="ghost" size="sm" onClick={() => handleDismissMember(m.user_id)} className="opacity-0 group-hover/member:opacity-100 w-6 h-6 p-0 text-white/20 hover:text-accent transition-all"><X className="w-3 h-3" /></Button>
                        )}
                     </div>
@@ -301,7 +328,7 @@ export default function GroupChatPage() {
                       ) : (
                         <div className="flex gap-2">
                            <Button 
-                             className="flex-1 h-8 bg-accent text-white text-[8px] font-black uppercase tracking-widest"
+                             className="flex-1 h-8 bg-accent text-white text-[8px) font-black uppercase tracking-widest"
                              onClick={() => supabase.from('groups').delete().eq('id', id).then(() => router.push('/dashboard/groups'))}
                            >
                              Confirm Terminate
