@@ -20,4 +20,4 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     timeout: 30000,
     heartbeatIntervalMs: 15000,
   },
-});
+}); // Fixed type error
