@@ -27,6 +27,7 @@ export default function GroupChatPage() {
   const chatRef = useRef<HTMLDivElement>(null)
   const [syncStatus, setSyncStatus] = useState<string>("connecting")
   const [retryCount, setRetryCount] = useState(0)
+  const channelRef = useRef<any>(null)
 
 
   useEffect(() => {
@@ -93,10 +94,8 @@ export default function GroupChatPage() {
     init()
 
     // 🛰️ AGGRESSIVE REAL-TIME SYNC ENGINE
-    let channel: any;
-    
     const subscribeToSignal = () => {
-      channel = supabase
+      channelRef.current = supabase
         .channel(`group-${id}`)
         .on('postgres_changes', { 
           event: 'INSERT', 
@@ -104,27 +103,26 @@ export default function GroupChatPage() {
           table: 'group_messages',
           filter: `group_id=eq.${id}`
         }, async (payload) => {
-          // 🚀 INSTANT SYNC: Push to state immediately
+          // 🚀 DB FALLBACK: If broadcast missed it
           const rawMsg = payload.new as any;
           setMessages(prev => {
             if (prev.some((m: any) => m.id === rawMsg.id)) return prev;
             return [...prev, { ...rawMsg, profiles: { full_name: "Voyager", avatar_url: null } }];
           });
 
-          // 🛰️ HYDRATION: Fetch profile in background
+          // Hydrate in background
           try {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('full_name, avatar_url')
-              .eq('id', rawMsg.user_id)
-              .maybeSingle()
-            
-            if (profile) {
-              setMessages(prev => prev.map((m: any) => m.id === rawMsg.id ? { ...m, profiles: profile } : m));
-            }
-          } catch (err) {
-            console.error("Sync Hydration Error:", err)
-          }
+            const { data: profile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', rawMsg.user_id).maybeSingle()
+            if (profile) setMessages(prev => prev.map((m: any) => m.id === rawMsg.id ? { ...m, profiles: profile } : m));
+          } catch (err) {}
+        })
+        .on('broadcast', { event: 'chat' }, (payload) => {
+          // ⚡ INSTANT BROADCAST
+          const newMsg = payload.payload;
+          setMessages(prev => {
+            if (prev.some((m: any) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
         })
         .subscribe((status, err) => {
           setSyncStatus(status);
@@ -139,7 +137,7 @@ export default function GroupChatPage() {
             if (nextRetry <= 3) {
               setRetryCount(nextRetry);
               setTimeout(() => {
-                supabase.removeChannel(channel);
+                if (channelRef.current) supabase.removeChannel(channelRef.current);
                 subscribeToSignal();
               }, 2000 * nextRetry);
             }
@@ -150,7 +148,7 @@ export default function GroupChatPage() {
     subscribeToSignal();
 
     return () => { 
-      if (channel) supabase.removeChannel(channel) 
+      if (channelRef.current) supabase.removeChannel(channelRef.current) 
     }
   }, [id, router])
 
@@ -180,6 +178,13 @@ export default function GroupChatPage() {
     const { error } = await supabase
       .from('group_messages')
       .insert([{ group_id: id, user_id: user.id, content }])
+    
+    // ⚡ BROADCAST INSTANTLY
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'chat',
+      payload: tempMsg
+    })
     
     if (error) {
        setMessages(prev => prev.filter(m => m.id !== tempId));

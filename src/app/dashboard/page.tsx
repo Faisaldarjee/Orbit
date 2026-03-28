@@ -18,6 +18,7 @@ export default function PublicOrbPage() {
   const chatRef = useRef<HTMLDivElement>(null)
   const [syncStatus, setSyncStatus] = useState<string>("connecting")
   const [retryCount, setRetryCount] = useState(0)
+  const channelRef = useRef<any>(null)
 
   useEffect(() => {
     const getUser = async () => {
@@ -50,33 +51,30 @@ export default function PublicOrbPage() {
     fetchMessages()
 
     // 🛰️ AGGRESSIVE REAL-TIME BROADCAST ENGINE
-    let channel: any;
-
     const subscribeToGlobalSignal = () => {
-       channel = supabase
+       channelRef.current = supabase
         .channel('public-orb')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-          // 🚀 INSTANT SYNC: Add to UI immediately
+          // 🚀 DB FALLBACK: If broadcast was missed, add it
           const rawMsg = payload.new as any;
           setMessages(prev => {
             if (prev.some(m => m.id === rawMsg.id)) return prev;
             return [...prev, { ...rawMsg, profiles: { full_name: "Voyager", avatar_url: null } }];
           });
-
-          // 🛰️ HYDRATION: Fetch profile in background
+          
+          // Hydrate profile in background
           try {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('full_name, avatar_url')
-              .eq('id', rawMsg.user_id)
-              .maybeSingle()
-            
-            if (profile) {
-              setMessages(prev => prev.map(m => m.id === rawMsg.id ? { ...m, profiles: profile } : m));
-            }
-          } catch (err) {
-            console.error("Broadcast Hydration Error:", err)
-          }
+            const { data: profile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', rawMsg.user_id).maybeSingle()
+            if (profile) setMessages(prev => prev.map(m => m.id === rawMsg.id ? { ...m, profiles: profile } : m));
+          } catch (err) {}
+        })
+        .on('broadcast', { event: 'chat' }, (payload) => {
+          // ⚡ INSTANT BROADCAST: WhatsApp-speed delivery
+          const newMsg = payload.payload;
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
         })
         .subscribe((status, err) => {
           setSyncStatus(status);
@@ -91,7 +89,7 @@ export default function PublicOrbPage() {
             if (nextRetry <= 3) {
               setRetryCount(nextRetry);
               setTimeout(() => {
-                supabase.removeChannel(channel);
+                if (channelRef.current) supabase.removeChannel(channelRef.current);
                 subscribeToGlobalSignal();
               }, 2000 * nextRetry);
             }
@@ -102,7 +100,7 @@ export default function PublicOrbPage() {
     subscribeToGlobalSignal();
 
     return () => {
-      if (channel) supabase.removeChannel(channel)
+      if (channelRef.current) supabase.removeChannel(channelRef.current)
     }
   }, [retryCount])
 
@@ -132,6 +130,13 @@ export default function PublicOrbPage() {
     const { error } = await supabase
       .from('messages')
       .insert([{ user_id: user.id, content }])
+    
+    // ⚡ BROADCAST INSTANTLY
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'chat',
+      payload: tempMsg
+    })
     
     if (error) {
        setMessages(prev => prev.filter(m => m.id !== tempId));

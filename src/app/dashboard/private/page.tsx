@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { MessageSquare, Send, CheckCircle2, XCircle, Loader2, Sparkles, ShieldAlert } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { cn } from "@/lib/utils"
+import { cn, formatTime } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 
@@ -20,6 +20,7 @@ export default function PrivateMoonPage() {
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState("")
   const chatRef = useRef<HTMLDivElement>(null)
+  const channelRef = useRef<any>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -32,16 +33,33 @@ export default function PrivateMoonPage() {
     }
     init()
 
-    const channel = supabase
-      .channel('private-moon-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages' }, async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) await refreshData(user.id)
-      })
-      .subscribe()
+    const setupSignal = () => {
+      channelRef.current = supabase
+        .channel('private-moon-sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages' }, async (payload) => {
+          // Fallback refresh for background updates
+          if (user) await refreshData(user.id)
+        })
+        .on('broadcast', { event: 'dm' }, (payload) => {
+          const newDm = payload.payload;
+          // Only process if it's for us or from us in the active chat
+          if (user && (newDm.receiver_id === user.id || newDm.sender_id === user.id)) {
+            if (activeChat && (newDm.sender_id === activeChat || newDm.receiver_id === activeChat)) {
+               setMessages(prev => {
+                 if (prev.some(m => m.id === newDm.id)) return prev;
+                 return [...prev, newDm];
+               });
+            }
+            refreshData(user.id);
+          }
+        })
+        .subscribe()
+    }
+    
+    if (user) setupSignal()
 
-    return () => { supabase.removeChannel(channel) }
-  }, [])
+    return () => { if (channelRef.current) supabase.removeChannel(channelRef.current) }
+  }, [user, activeChat])
 
   const refreshData = async (userId: string) => {
     const { data: allDms } = await supabase
@@ -98,11 +116,33 @@ export default function PrivateMoonPage() {
     e.preventDefault()
     if (!input.trim() || !activeChat || !user) return
 
-    const { error } = await supabase
+    const tempId = Math.random();
+    const tempMsg = {
+      id: tempId,
+      sender_id: user.id,
+      receiver_id: activeChat,
+      content: input,
+      created_at: new Date().toISOString(),
+      status: 'accepted'
+    };
+
+    setMessages(prev => [...prev, tempMsg]);
+
+    const { error, data } = await supabase
       .from('dm_messages')
       .insert([{ sender_id: user.id, receiver_id: activeChat, content: input, status: 'accepted' }])
+      .select()
+      .single()
 
-    if (!error) setInput("")
+    if (!error) {
+      setInput("")
+      // ⚡ BROADCAST INSTANTLY
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'dm',
+        payload: data || tempMsg
+      })
+    }
   }
 
   const handleAccept = async (dm: any) => {
@@ -213,13 +253,19 @@ export default function PrivateMoonPage() {
                       key={idx} 
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className={cn("flex", m.sender_id === user.id ? "justify-end" : "justify-start")}
+                      className={cn("flex flex-col", m.sender_id === user.id ? "items-end" : "items-start")}
                     >
                       <div className={cn(
-                        "px-4 py-2.5 rounded-2xl max-w-[70%] text-sm ring-1",
+                        "px-4 py-2.5 rounded-2xl max-w-[70%] text-sm ring-1 relative group",
                         m.sender_id === user.id ? "bg-primary/20 text-white ring-primary/20 rounded-tr-none shadow-[0_4px_15px_rgba(139,92,246,0.1)]" : "bg-white/5 text-white/80 ring-white/5 rounded-tl-none"
                       )}>
                         {m.content}
+                        <div className={cn(
+                          "text-[7px] font-bold opacity-0 group-hover:opacity-100 transition-opacity absolute -bottom-4 uppercase tracking-widest text-white/20 whitespace-nowrap",
+                          m.sender_id === user.id ? "right-0" : "left-0"
+                        )}>
+                          {formatTime(m.created_at)}
+                        </div>
                       </div>
                     </motion.div>
                   ))}
