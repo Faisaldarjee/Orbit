@@ -79,9 +79,10 @@ export default function GroupChatPage() {
           .from('group_messages')
           .select('*, profiles:user_id(full_name, avatar_url)')
           .eq('group_id', id)
-          .order('created_at', { ascending: true })
+          .order('created_at', { ascending: false })
+          .limit(50)
         
-        if (msgData) setMessages(msgData)
+        if (msgData) setMessages(msgData.reverse())
       } catch (err: any) {
         console.error("Initialization Error:", err.message)
       } finally {

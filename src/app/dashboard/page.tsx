@@ -27,16 +27,25 @@ export default function PublicOrbPage() {
     getUser()
 
     const fetchMessages = async () => {
-      const { data } = await supabase
-        .from('messages')
-        .select(`
-          id, content, created_at, user_id,
-          profiles (full_name, avatar_url)
-        `)
-        .order('created_at', { ascending: true })
-        .limit(50)
-      
-      if (data) setMessages(data)
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .select(`
+            id, content, created_at, user_id,
+            profiles (full_name, avatar_url)
+          `)
+          .order('created_at', { ascending: false })
+          .limit(50)
+        
+        if (error) {
+          console.error("Fetch Messages Error:", error);
+          toast.error("Sync Failure: Unable to fetch orbital data.");
+        } else if (data) {
+          setMessages(data.reverse())
+        }
+      } catch (err) {
+        console.error("Fetch Messages Exception:", err);
+      }
     }
     fetchMessages()
 
