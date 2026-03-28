@@ -17,7 +17,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       events_per_second: 10,
     },
     // 🛰️ Stability Boost for Vercel
-    transport: 'websocket',
     timeout: 30000,
     heartbeatIntervalMs: 15000,
   },
