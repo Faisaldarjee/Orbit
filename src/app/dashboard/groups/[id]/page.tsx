@@ -104,9 +104,9 @@ export default function GroupChatPage() {
             .eq('id', payload.new.user_id)
             .maybeSingle()
           
-          const newMessage = { ...(payload.new as any), profiles: profile || { full_name: "Voyager", avatar_url: null } }
+          const newMessage = { ...payload.new as any, profiles: profile || { full_name: "Voyager", avatar_url: null } }
           setMessages(prev => {
-            const exists = prev.some((m: any) => m.id === newMessage.id)
+            const exists = prev.some((m: any) => m.id === (newMessage as any).id)
             if (exists) return prev
             return [...prev, newMessage]
           })
