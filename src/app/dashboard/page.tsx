@@ -127,18 +127,24 @@ export default function PublicOrbPage() {
     };
     setMessages(prev => [...prev, tempMsg]);
 
-    const { error } = await supabase
+    const { error, data: realMsg } = await supabase
       .from('messages')
       .insert([{ user_id: user.id, content }])
+      .select()
+      .single()
     
-    // ⚡ BROADCAST INSTANTLY
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'chat',
-      payload: tempMsg
-    })
-    
-    if (error) {
+    // ⚡ BROADCAST INSTANTLY WITH REAL ID
+    if (!error && realMsg) {
+       const finalMsg = { ...realMsg, profiles: tempMsg.profiles };
+       // Update local state with real ID
+       setMessages(prev => prev.map(m => m.id === tempId ? finalMsg : m));
+       
+       channelRef.current?.send({
+         type: 'broadcast',
+         event: 'chat',
+         payload: finalMsg
+       });
+    } else if (error) {
        setMessages(prev => prev.filter(m => m.id !== tempId));
        toast.error("Transmission error: " + error.message)
     }

@@ -128,20 +128,26 @@ export default function PrivateMoonPage() {
 
     setMessages(prev => [...prev, tempMsg]);
 
-    const { error, data } = await supabase
+    const { error, data: realMsg } = await supabase
       .from('dm_messages')
       .insert([{ sender_id: user.id, receiver_id: activeChat, content: input, status: 'accepted' }])
       .select()
       .single()
 
-    if (!error) {
+    if (!error && realMsg) {
       setInput("")
-      // ⚡ BROADCAST INSTANTLY
+      // Update local state with real ID
+      setMessages(prev => prev.map(m => m.id === tempId ? realMsg : m));
+      
+      // ⚡ BROADCAST INSTANTLY WITH REAL ID
       channelRef.current?.send({
         type: 'broadcast',
         event: 'dm',
-        payload: data || tempMsg
+        payload: realMsg
       })
+    } else if (error) {
+       setMessages(prev => prev.filter(m => m.id !== tempId));
+       toast.error("Signal Transmission Failed")
     }
   }
 
