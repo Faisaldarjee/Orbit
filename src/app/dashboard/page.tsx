@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Send, Globe, Search, Sparkles, XCircle, WifiOff } from "lucide-react"
+import { Send, Globe, Search, Sparkles, XCircle, WifiOff, Zap } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -16,22 +16,41 @@ export default function PublicOrbPage() {
   const [input, setInput] = useState("")
   const [user, setUser] = useState<any>(null)
   const chatRef = useRef<HTMLDivElement>(null)
+  const [syncStatus, setSyncStatus] = useState<string>("connecting")
 
-  // 🛰️ SIGNAL DIAGNOSTIC
+  // 🛰️ SYSTEM CHECK LOGIC
+  const performSystemCheck = async () => {
+    toast.loading("Probing Universal Signal...", { id: "globcheck" });
+    try {
+      const { error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1);
+      if (error) {
+        toast.error("Universal Signal: FAILED", { 
+          id: "globcheck",
+          description: `Authentication Error: ${error.message}. Verify Vercel keys.`,
+          duration: 10000
+        });
+      } else {
+        toast.success("Universal Signal: OK", { 
+          id: "globcheck",
+          description: "Database sync confirmed. Checking Realtime Publication next...",
+          duration: 5000
+        });
+        if (syncStatus !== 'SUBSCRIBED') {
+           window.location.reload();
+        }
+      }
+    } catch (err: any) {
+      toast.error("System Check Error", { id: "globcheck", description: err.message });
+    }
+  };
+
   useEffect(() => {
     const checkSignal = () => {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      
-      console.log("🛰️ Global Diagnostic:", { 
-        url_present: !!url, 
-        key_present: !!key,
-        key_length: key?.length || 0 
-      });
-
       if (!url || !key) {
         toast.error("Global Signal Missing", {
-           description: "Vercel is not transmitting credentials for the Public Orb. Sync disabled.",
+           description: "Vercel is not transmitting credentials for the Public Orb.",
            duration: Infinity,
            icon: <WifiOff className="w-5 h-5 text-red-500" />
         });
@@ -90,6 +109,7 @@ export default function PublicOrbPage() {
         }
       })
       .subscribe((status, err) => {
+        setSyncStatus(status);
         console.log(`Global Sync Status:`, status, err)
         if (status === 'SUBSCRIBED') {
           toast.success("Orbital Sync Established", { description: "Global frequency locked." })
@@ -116,13 +136,10 @@ export default function PublicOrbPage() {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !user) return
-
     setInput("")
-
     const { error } = await supabase
       .from('messages')
       .insert([{ user_id: user.id, content: input.trim() }])
-
     if (error) {
       toast.error("Transmission error: " + error.message)
     }
@@ -134,7 +151,6 @@ export default function PublicOrbPage() {
   const handleSendRequest = async () => {
     if (!user || !selectedUser) return
     setRequestSending(true)
-
     const { error } = await supabase
       .from('dm_messages')
       .insert([{ 
@@ -143,7 +159,6 @@ export default function PublicOrbPage() {
         content: `Voyager ${user.user_metadata?.full_name || 'Anonymous'} is requesting a secure signal connection.`,
         status: 'pending'
       }])
-    
     if (error) {
       toast.error("Signal error: " + error.message)
     } else {
@@ -165,6 +180,19 @@ export default function PublicOrbPage() {
         </div>
 
         <div className="flex items-center gap-3">
+           <Button 
+             variant="ghost" 
+             size="sm" 
+             onClick={performSystemCheck}
+             className={cn(
+               "bg-white/5 border border-white/10 font-black text-[10px] uppercase tracking-widest px-4",
+               syncStatus === 'SUBSCRIBED' ? "text-secondary" : "text-amber-500 animate-pulse"
+             )}
+           >
+              <Zap className="w-3 h-3 mr-2" /> 
+              {syncStatus === 'SUBSCRIBED' ? "Global Status: Nominal" : "Global Status: Low Signal"}
+           </Button>
+
           <div className="hidden md:flex items-center gap-1 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-xs font-bold">
             <div className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
             SYNCHRONIZED

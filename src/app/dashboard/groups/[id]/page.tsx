@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Users, Send, Globe, ShieldCheck, Loader2, ArrowLeft, MoreHorizontal, Share2, Shield, Check, X, Settings, WifiOff } from "lucide-react"
+import { Users, Send, Globe, ShieldCheck, Loader2, ArrowLeft, MoreHorizontal, Share2, Shield, Check, X, Settings, WifiOff, Zap } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -25,22 +25,52 @@ export default function GroupChatPage() {
   const [showTerminateConfirm, setShowTerminateConfirm] = useState(false)
   const [input, setInput] = useState("")
   const chatRef = useRef<HTMLDivElement>(null)
+  const [syncStatus, setSyncStatus] = useState<string>("connecting")
 
-  // 🛰️ SIGNAL DIAGNOSTIC
+  // 🛰️ SIGNAL DIAGNOSTIC & SYSTEM CHECK
+  const performSystemCheck = async () => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    toast.loading("Probing Database Signal...", { id: "syscheck" });
+    
+    try {
+      // Test 1: Simple Select
+      const { error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1);
+      
+      if (error) {
+        console.error("Signal Probe Failed:", error);
+        toast.error("Database Signal: FAILED", { 
+          id: "syscheck",
+          description: `Authentication Error: ${error.message}. Check your Vercel keys.`,
+          duration: 10000
+        });
+      } else {
+        toast.success("Database Signal: OK", { 
+          id: "syscheck",
+          description: "Credentials Verified. The problem is likely with Real-time Publications.",
+          duration: 5000
+        });
+
+        // Test 2: Channel Health
+        if (syncStatus !== 'SUBSCRIBED') {
+           toast.info("Attempting Signal Re-Sync...", { description: "Requesting fresh orbital slot." });
+           window.location.reload();
+        }
+      }
+    } catch (err: any) {
+      toast.error("System Check Error", { id: "syscheck", description: err.message });
+    }
+  };
+
   useEffect(() => {
     const checkSignal = () => {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       
-      console.log("🛰️ Orbital Diagnostic:", { 
-        url_present: !!url, 
-        key_present: !!key,
-        key_length: key?.length || 0 
-      });
-
       if (!url || !key) {
         toast.error("Signal Configuration Missing", {
-           description: "Vercel is not transmitting your credentials. Please check your Environment Variables.",
+           description: "Vercel is not transmitting credentials. Please check your Environment Variables.",
            duration: Infinity,
            icon: <WifiOff className="w-5 h-5 text-red-500" />
         });
@@ -138,6 +168,7 @@ export default function GroupChatPage() {
         }
       })
       .subscribe((status, err) => {
+        setSyncStatus(status);
         console.log(`Sync Status [${id}]:`, status, err)
         if (status === 'SUBSCRIBED') {
           toast.success("Orbital Sync Established", { description: "Signal frequency locked." })
@@ -162,15 +193,6 @@ export default function GroupChatPage() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !user || !id) return
-
-    const tempMsg = {
-      id: Math.random(),
-      group_id: id,
-      user_id: user.id,
-      content: input.trim(),
-      created_at: new Date().toISOString(),
-      profiles: { full_name: user.user_metadata?.full_name || "You", avatar_url: null }
-    }
 
     setInput("")
 
@@ -239,6 +261,19 @@ export default function GroupChatPage() {
         </div>
 
         <div className="flex items-center gap-3">
+           <Button 
+             variant="ghost" 
+             size="sm" 
+             onClick={performSystemCheck}
+             className={cn(
+               "bg-white/5 border border-white/10 font-black text-[10px] uppercase tracking-widest px-4",
+               syncStatus === 'SUBSCRIBED' ? "text-green-500" : "text-amber-500 animate-pulse"
+             )}
+           >
+              <Zap className="w-3 h-3 mr-2" /> 
+              {syncStatus === 'SUBSCRIBED' ? "System Status: Nominal" : "System Status: Low Signal"}
+           </Button>
+
            {group?.created_by === user?.id && (
              <Button 
                variant="ghost" 
