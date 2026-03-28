@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Users, Send, Globe, ShieldCheck, Loader2, ArrowLeft, MoreHorizontal, Share2, Shield, Check, X, Settings, WifiOff, Zap, ShieldAlert, RefreshCw } from "lucide-react"
+import { Users, Send, Globe, Loader2, ArrowLeft, Share2, Shield, Check, X, MessageSquare } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -28,37 +28,6 @@ export default function GroupChatPage() {
   const [syncStatus, setSyncStatus] = useState<string>("connecting")
   const [retryCount, setRetryCount] = useState(0)
 
-  // 🛰️ SIGNAL STRENGTH & FINGERPRINT DIAGNOSTIC
-  const performSystemCheck = async () => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "MISSING";
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "MISSING";
-    const fingerprint = `URL: ${url.substring(0, 15)}... | KEY: ${key.substring(0, 5)}...`;
-    
-    toast.loading(`Probing Signal: ${fingerprint}`, { id: "syscheck" });
-    
-    try {
-      const { error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1);
-      
-      if (error) {
-        toast.error("Database Signal: FAILED", { 
-          id: "syscheck",
-          description: `Auth Error: ${error.message}. Fingerprint: ${fingerprint}`,
-          duration: 15000,
-          icon: <ShieldAlert className="w-5 h-5" />
-        });
-      } else {
-        toast.success("Database Signal: NOMINAL", { 
-          id: "syscheck",
-          description: `Credentials Verified (${fingerprint}). Re-syncing browser...`,
-          duration: 10000,
-          icon: <Zap className="w-5 h-5 text-green-500" />
-        });
-        window.location.reload();
-      }
-    } catch (err: any) {
-      toast.error("System Check Error", { id: "syscheck", description: err.message });
-    }
-  };
 
   useEffect(() => {
     const init = async () => {
@@ -157,23 +126,16 @@ export default function GroupChatPage() {
           
           if (status === 'SUBSCRIBED') {
             setRetryCount(0);
-            toast.success("Orbital Sync Established", { id: "sync-success", description: "Signal frequency locked." })
           }
           
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             const nextRetry = retryCount + 1;
             if (nextRetry <= 3) {
               setRetryCount(nextRetry);
-              toast.loading(`Re-Locking Signal (Attempt ${nextRetry}/3)...`, { id: "sync-retry" });
               setTimeout(() => {
                 supabase.removeChannel(channel);
                 subscribeToSignal();
               }, 2000 * nextRetry);
-            } else {
-              toast.error("Orbital Sync Interrupted", { 
-                id: "sync-error",
-                description: `Global frequency drifting: ${err?.message || 'Unstable Connection'}`,
-              })
             }
           }
         });
@@ -257,18 +219,6 @@ export default function GroupChatPage() {
         </div>
 
         <div className="flex items-center gap-3">
-           <Button 
-             variant="ghost" 
-             size="sm" 
-             onClick={performSystemCheck}
-             className={cn(
-               "bg-white/5 border border-white/10 font-black text-[10px] uppercase tracking-widest px-4",
-               syncStatus === 'SUBSCRIBED' ? "text-green-500" : "text-amber-500 animate-pulse"
-             )}
-           >
-              {syncStatus === 'SUBSCRIBED' ? <Zap className="w-3 h-3 mr-2" /> : <RefreshCw className="w-3 h-3 mr-2 animate-spin" />}
-              {syncStatus === 'SUBSCRIBED' ? "Signal: NOMINAL" : "Signal: DRIFTING"}
-           </Button>
 
            {group?.created_by === user?.id && (
              <Button 

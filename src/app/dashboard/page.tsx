@@ -19,38 +19,6 @@ export default function PublicOrbPage() {
   const [syncStatus, setSyncStatus] = useState<string>("connecting")
   const [retryCount, setRetryCount] = useState(0)
 
-  // 🛰️ SIGNAL STRENGTH & FINGERPRINT DIAGNOSTIC
-  const performSystemCheck = async () => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "MISSING";
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "MISSING";
-    const fingerprint = `URL: ${url.substring(0, 15)}... | KEY: ${key.substring(0, 5)}...`;
-    
-    toast.loading(`Probing Global Signal: ${fingerprint}`, { id: "globcheck" });
-    
-    try {
-      const { error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1);
-      
-      if (error) {
-        toast.error("Universal Signal: FAILED", { 
-          id: "globcheck",
-          description: `Auth Error: ${error.message}. Fingerprint: ${fingerprint}`,
-          duration: 15000,
-          icon: <ShieldAlert className="w-5 h-5" />
-        });
-      } else {
-        toast.success("Universal Signal: NOMINAL", { 
-          id: "globcheck",
-          description: `Credentials Verified (${fingerprint}). Re-syncing browser...`,
-          duration: 10000,
-          icon: <Zap className="w-5 h-5 text-green-500" />
-        });
-        window.location.reload();
-      }
-    } catch (err: any) {
-      toast.error("Global System Check Error", { id: "globcheck", description: err.message });
-    }
-  };
-
   useEffect(() => {
     const getUser = async () => {
       const { data: { user: currentUser } } = await supabase.auth.getUser()
@@ -103,23 +71,16 @@ export default function PublicOrbPage() {
 
           if (status === 'SUBSCRIBED') {
             setRetryCount(0);
-            toast.success("Orbital Sync Established", { id: "global-success", description: "Global frequency locked." })
           }
 
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             const nextRetry = retryCount + 1;
             if (nextRetry <= 3) {
               setRetryCount(nextRetry);
-              toast.loading(`Re-Locking Global Signal (Attempt ${nextRetry}/3)...`, { id: "global-retry" });
               setTimeout(() => {
                 supabase.removeChannel(channel);
                 subscribeToGlobalSignal();
               }, 2000 * nextRetry);
-            } else {
-              toast.error("Orbital Sync Interrupted", { 
-                id: "global-error",
-                description: `Global frequency drifting: ${err?.message || 'Unstable Connection'}`,
-              })
             }
           }
         })
@@ -179,22 +140,9 @@ export default function PublicOrbPage() {
         </div>
 
         <div className="flex items-center gap-3">
-           <Button 
-             variant="ghost" 
-             size="sm" 
-             onClick={performSystemCheck}
-             className={cn(
-               "bg-white/5 border border-white/10 font-black text-[10px] uppercase tracking-widest px-4",
-               syncStatus === 'SUBSCRIBED' ? "text-secondary" : "text-amber-500 animate-pulse"
-             )}
-           >
-              {syncStatus === 'SUBSCRIBED' ? <Zap className="w-3 h-3 mr-2" /> : <RefreshCw className="w-3 h-3 mr-2 animate-spin" />}
-              {syncStatus === 'SUBSCRIBED' ? "Signal: NOMINAL" : "Signal: DRIFTING"}
-           </Button>
-
-          <div className="hidden md:flex items-center gap-1 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-xs font-bold">
-            <div className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
-            SYNCHRONIZED
+          <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/10 border border-secondary/20 text-secondary text-xs font-black tracking-widest uppercase">
+            <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
+            Live Sync
           </div>
         </div>
       </header>
