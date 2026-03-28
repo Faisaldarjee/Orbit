@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Users, Send, Globe, ShieldCheck, Loader2, ArrowLeft, MoreHorizontal, Share2, Shield, Check, X, Settings } from "lucide-react"
+import { Users, Send, Globe, ShieldCheck, Loader2, ArrowLeft, MoreHorizontal, Share2, Shield, Check, X, Settings, WifiOff } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -25,6 +25,29 @@ export default function GroupChatPage() {
   const [showTerminateConfirm, setShowTerminateConfirm] = useState(false)
   const [input, setInput] = useState("")
   const chatRef = useRef<HTMLDivElement>(null)
+
+  // 🛰️ SIGNAL DIAGNOSTIC
+  useEffect(() => {
+    const checkSignal = () => {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      
+      console.log("🛰️ Orbital Diagnostic:", { 
+        url_present: !!url, 
+        key_present: !!key,
+        key_length: key?.length || 0 
+      });
+
+      if (!url || !key) {
+        toast.error("Signal Configuration Missing", {
+           description: "Vercel is not transmitting your credentials. Please check your Environment Variables.",
+           duration: Infinity,
+           icon: <WifiOff className="w-5 h-5 text-red-500" />
+        });
+      }
+    };
+    checkSignal();
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -330,13 +353,13 @@ export default function GroupChatPage() {
                       ) : (
                         <div className="flex gap-2">
                            <Button 
-                             className="flex-1 h-8 bg-accent text-white text-[8px) font-black uppercase tracking-widest"
+                             className="flex-1 h-8 bg-accent text-white text-[8px] font-black uppercase tracking-widest"
                              onClick={() => supabase.from('groups').delete().eq('id', id).then(() => router.push('/dashboard/groups'))}
                            >
                              Confirm Terminate
                            </Button>
                            <Button 
-                             variant="ghost"
+                             variant="ghost" 
                              className="flex-1 h-8 bg-white/5 text-white/40 text-[8px] font-black uppercase tracking-widest hover:bg-white/10"
                              onClick={() => setShowTerminateConfirm(false)}
                            >

@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Send, Globe, Search, Sparkles, XCircle } from "lucide-react"
+import { Send, Globe, Search, Sparkles, XCircle, WifiOff } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -16,6 +16,29 @@ export default function PublicOrbPage() {
   const [input, setInput] = useState("")
   const [user, setUser] = useState<any>(null)
   const chatRef = useRef<HTMLDivElement>(null)
+
+  // 🛰️ SIGNAL DIAGNOSTIC
+  useEffect(() => {
+    const checkSignal = () => {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      
+      console.log("🛰️ Global Diagnostic:", { 
+        url_present: !!url, 
+        key_present: !!key,
+        key_length: key?.length || 0 
+      });
+
+      if (!url || !key) {
+        toast.error("Global Signal Missing", {
+           description: "Vercel is not transmitting credentials for the Public Orb. Sync disabled.",
+           duration: Infinity,
+           icon: <WifiOff className="w-5 h-5 text-red-500" />
+        });
+      }
+    };
+    checkSignal();
+  }, []);
 
   useEffect(() => {
     const getUser = async () => {
@@ -66,14 +89,16 @@ export default function PublicOrbPage() {
           console.error("Broadcast Sync Error:", err)
         }
       })
-      .subscribe((status) => {
+      .subscribe((status, err) => {
+        console.log(`Global Sync Status:`, status, err)
         if (status === 'SUBSCRIBED') {
-          console.log("Orbital Sync Established for Public Orb")
           toast.success("Orbital Sync Established", { description: "Global frequency locked." })
         }
-        if (status === 'CHANNEL_ERROR') {
-          console.error("Sync Interrupted for Public Orb")
-          toast.error("Orbital Sync Interrupted", { description: "Global frequency drifting." })
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error("Global Sync Failure:", err)
+          toast.error("Orbital Sync Interrupted", { 
+            description: `Global frequency drifting: ${err || 'Unstable Connection'}`,
+          })
         }
       })
 
@@ -91,14 +116,6 @@ export default function PublicOrbPage() {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !user) return
-
-    const tempMsg = {
-      id: Math.random(),
-      user_id: user.id,
-      content: input.trim(),
-      created_at: new Date().toISOString(),
-      profiles: { full_name: user.user_metadata?.full_name || "You", avatar_url: null }
-    }
 
     setInput("")
 
