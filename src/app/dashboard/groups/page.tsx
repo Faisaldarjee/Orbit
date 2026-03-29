@@ -37,7 +37,7 @@ export default function SolarSystemsPage() {
           )
         `)
         .eq('user_id', user.id)
-      
+
       if (fetchError) {
         console.error("Fetch error:", fetchError.message)
       } else if (data) {
@@ -50,8 +50,12 @@ export default function SolarSystemsPage() {
 
     const channel = supabase
       .channel('group-sync')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'groups' }, (payload) => {
-        setSystems(prev => [payload.new, ...prev])
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'groups' }, async (payload) => {
+        const newGroup = payload.new as any
+        setSystems(prev => {
+          if (prev.some(g => g.id === newGroup.id)) return prev
+          return [newGroup, ...prev]
+        })
       })
       .subscribe()
 
@@ -62,34 +66,48 @@ export default function SolarSystemsPage() {
     e.preventDefault()
     if (!newGroupName.trim() || !user) return
 
-    setLoading(true)
-    setError("")
+    const name = newGroupName.trim()
+    setNewGroupName("")
+    setShowCreate(false)
+
+    // OPTIMISTIC UPDATE
+    const tempId = crypto.randomUUID()
+    const tempGroup = {
+      id: tempId,
+      name,
+      created_by: user.id,
+      created_at: new Date().toISOString(),
+      is_optimistic: true
+    }
+
+    setSystems(prev => [tempGroup, ...prev])
 
     const { data: group, error: insertError } = await supabase
       .from('groups')
-      .insert([{ name: newGroupName, created_by: user.id }])
+      .insert([{ name, created_by: user.id }])
       .select()
       .single()
 
     if (insertError) {
+      setSystems(prev => prev.filter(g => g.id !== tempId))
       setError(insertError.message)
-      setLoading(false)
+      toast.error("System Launch Failed: " + insertError.message)
       return
     }
 
     if (group) {
+      // Replace optimistic group with real one
+      setSystems(prev => prev.map(g => g.id === tempId ? group : g))
+
       await supabase.from('group_members').insert([{ group_id: group.id, user_id: user.id, role: 'admin' }])
-      setNewGroupName("")
-      setShowCreate(false)
       toast.success(`System '${group.name}' established successfully!`)
     }
-    setLoading(false)
   }
 
   const handleJoinSystem = async (groupId: string) => {
     if (!user) return
     const { error } = await supabase.from('group_members').insert([{ group_id: groupId, user_id: user.id }])
-    
+
     if (error) {
       if (error.code === '23505') {
         toast.info("You are already part of this system's orbit.")
@@ -114,8 +132,8 @@ export default function SolarSystemsPage() {
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
         <div>
           <div className="flex items-center gap-2 mb-2">
-             <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-             <span className="text-[10px] font-black uppercase tracking-widest text-accent/60">Orbital Hub Online</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-accent/60">Orbital Hub Online</span>
           </div>
           <h1 className="text-3xl font-black font-outfit flex items-center gap-2">
             <Users className="w-8 h-8 text-accent" />
@@ -136,16 +154,16 @@ export default function SolarSystemsPage() {
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="mb-12">
           <GlassCard className="p-8 border-accent/40 bg-accent/5 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-                <Users className="w-32 h-32" />
+              <Users className="w-32 h-32" />
             </div>
             <h2 className="text-xl font-black font-outfit mb-2">Establish New Orbit</h2>
             <p className="text-sm text-white/40 mb-6 max-w-md">Define a new collective space for your fleet. All established systems are public by default.</p>
-            
+
             <form onSubmit={handleCreateSystem} className="flex flex-col md:flex-row gap-4">
-              <Input 
-                value={newGroupName} 
-                onChange={e => setNewGroupName(e.target.value)} 
-                placeholder="Enter System Name (e.g. Milky Way)..." 
+              <Input
+                value={newGroupName}
+                onChange={e => setNewGroupName(e.target.value)}
+                placeholder="Enter System Name (e.g. Milky Way)..."
                 className="flex-1 h-12 bg-white/5 border-white/10 focus:border-accent/40"
               />
               <Button type="submit" variant="secondary" className="bg-accent h-12 px-8 font-black uppercase tracking-widest" disabled={loading}>
@@ -159,8 +177,8 @@ export default function SolarSystemsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {systems.map((system) => (
-          <GlassCard 
-            key={system.id} 
+          <GlassCard
+            key={system.id}
             className="group hover:border-accent/30 transition-all p-0 flex flex-col relative overflow-hidden"
           >
             <div className="p-6">

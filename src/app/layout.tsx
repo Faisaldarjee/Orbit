@@ -33,15 +33,15 @@ export default function RootLayout({
           <div className="absolute top-[10%] left-[20%] w-[40rem] h-[40rem] bg-primary/10 rounded-full blur-[120px] animate-pulse" />
           <div className="absolute bottom-[10%] right-[20%] w-[35rem] h-[35rem] bg-secondary/10 rounded-full blur-[100px] animate-pulse delay-700" />
         </div>
-        
+
         <RealtimeProvider>
           <main className="flex-1 relative z-0">
             {children}
           </main>
         </RealtimeProvider>
-        
-        <Toaster 
-          theme="dark" 
+
+        <Toaster
+          theme="dark"
           position="top-right"
           expand={false}
           richColors

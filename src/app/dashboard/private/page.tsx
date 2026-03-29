@@ -42,10 +42,10 @@ export default function PrivateMoonPage() {
           const newDm = payload.new as any;
           if (user && (newDm.receiver_id === user.id || newDm.sender_id === user.id)) {
             if (activeChat && (newDm.sender_id === activeChat || newDm.receiver_id === activeChat)) {
-               setMessages(prev => {
-                 if (prev.some(m => String(m.id) === String(newDm.id))) return prev;
-                 return [...prev, newDm];
-               });
+              setMessages(prev => {
+                if (prev.some(m => String(m.id) === String(newDm.id))) return prev;
+                return [...prev, newDm];
+              });
             }
             refreshData(user.id);
           }
@@ -54,10 +54,10 @@ export default function PrivateMoonPage() {
           const newDm = payload.payload;
           if (user && (newDm.receiver_id === user.id || newDm.sender_id === user.id)) {
             if (activeChat && (newDm.sender_id === activeChat || newDm.receiver_id === activeChat)) {
-               setMessages(prev => {
-                 if (prev.some(m => String(m.id) === String(newDm.id))) return prev;
-                 return [...prev, newDm];
-               });
+              setMessages(prev => {
+                if (prev.some(m => String(m.id) === String(newDm.id))) return prev;
+                return [...prev, newDm];
+              });
             }
             refreshData(user.id);
           }
@@ -76,7 +76,7 @@ export default function PrivateMoonPage() {
           }
         })
     }
-    
+
     if (user) setupSignal()
 
     return () => { if (channelRef.current) supabase.removeChannel(channelRef.current) }
@@ -102,12 +102,12 @@ export default function PrivateMoonPage() {
           incomingReqs.push({ ...dm, contact })
         } else if (dm.status === 'accepted') {
           if (!uniqueContacts.has(contactId)) {
-            uniqueContacts.set(contactId, { 
-              id: contactId, 
-              name: contact?.full_name || "Unknown Voyager", 
-              avatar: contact?.avatar_url, 
-              lastMsg: dm.content, 
-              time: new Date(dm.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+            uniqueContacts.set(contactId, {
+              id: contactId,
+              name: contact?.full_name || "Unknown Voyager",
+              avatar: contact?.avatar_url,
+              lastMsg: dm.content,
+              time: new Date(dm.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             })
           }
         }
@@ -159,7 +159,7 @@ export default function PrivateMoonPage() {
       setInput("")
       // Update local state with real ID
       setMessages(prev => prev.map(m => m.id === tempId ? realMsg : m));
-      
+
       // ⚡ BROADCAST INSTANTLY WITH REAL ID
       channelRef.current?.send({
         type: 'broadcast',
@@ -167,8 +167,8 @@ export default function PrivateMoonPage() {
         payload: realMsg
       })
     } else if (error) {
-       setMessages(prev => prev.filter(m => m.id !== tempId));
-       toast.error("Signal Transmission Failed")
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      toast.error("Signal Transmission Failed")
     }
   }
 
@@ -177,7 +177,7 @@ export default function PrivateMoonPage() {
       .from('dm_messages')
       .update({ status: 'accepted', content: 'Signal established. Safe transmission initiated.' })
       .eq('id', dm.id)
-    
+
     if (error) {
       toast.error("Signal acceptance failed.")
     } else {
@@ -206,19 +206,11 @@ export default function PrivateMoonPage() {
               <MessageSquare className="w-8 h-8 text-primary" />
               Private Moon
             </h1>
-            <div className="mt-2 mb-4 flex items-center gap-2 h-6">
-              {syncStatus === 'SUBSCRIBED' && (
-                <div className="px-2 py-1 rounded-md border bg-green-500/10 border-green-500/20 text-green-500 text-[8px] font-black tracking-widest uppercase transition-all flex items-center gap-1.5 shadow-[0_0_15px_rgba(34,197,94,0.05)]">
-                  <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
-                  ENCRYPTION ACTIVE
-                </div>
-              )}
-            </div>
             <p className="text-white/40 text-sm italic">"Encrypted point-to-point synchronization."</p>
           </header>
 
           <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-hide">
-             {requests.length > 0 && (
+            {requests.length > 0 && (
               <>
                 <h3 className="text-xs font-black uppercase tracking-[0.2em] text-accent flex items-center gap-2">
                   <ShieldAlert className="w-3 h-3" /> Incoming Signals
@@ -240,8 +232,8 @@ export default function PrivateMoonPage() {
               <Sparkles className="w-3 h-3" /> Secure Fleet
             </h3>
             {chats.length > 0 ? chats.map(chat => (
-              <GlassCard 
-                key={chat.id} 
+              <GlassCard
+                key={chat.id}
                 className={cn(
                   "p-4 border-white/5 cursor-pointer flex items-center gap-4 transition-all hover:border-primary/20",
                   activeChat === chat.id ? "bg-primary/10 border-primary/20 shadow-[0_0_20px_rgba(139,92,246,0.1)]" : "hover:bg-white/5"
@@ -273,10 +265,6 @@ export default function PrivateMoonPage() {
                   </div>
                   <div>
                     <div className="text-sm font-black font-outfit uppercase tracking-widest">{chats.find(c => c.id === activeChat)?.name}</div>
-                    <div className="flex items-center gap-1.5 text-[8px] text-green-500 uppercase font-black tracking-widest leading-none">
-                      <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
-                      ENCRYPTED SIGNAL
-                    </div>
                   </div>
                 </div>
               </div>
@@ -284,8 +272,8 @@ export default function PrivateMoonPage() {
               <div ref={chatRef} className="flex-1 p-6 space-y-4 overflow-y-auto scrollbar-hide">
                 <AnimatePresence>
                   {messages.map((m, idx) => (
-                    <motion.div 
-                      key={idx} 
+                    <motion.div
+                      key={idx}
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       className={cn("flex flex-col", m.sender_id === user.id ? "items-end" : "items-start")}

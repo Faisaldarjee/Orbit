@@ -19,7 +19,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .from('group_members')
         .select('group_id')
         .eq('user_id', user.id)
-      
+
       if (groups) setUserGroups(groups.map(g => g.group_id))
 
       // 1. Listen for DMs
@@ -36,7 +36,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             .select('full_name')
             .eq('id', payload.new.sender_id)
             .single()
-          
+
           toast.success(`Signal Received from ${profile?.full_name || 'Voyager'}`, {
             description: payload.new.content.slice(0, 50) + (payload.new.content.length > 50 ? '...' : ''),
             icon: <MessageSquare className="w-4 h-4 text-accent" />,
@@ -59,7 +59,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             .select('name, created_by')
             .eq('id', payload.new.group_id)
             .single()
-          
+
           if (group && group.created_by === user.id) {
             const { data: profile } = await supabase
               .from('profiles')
